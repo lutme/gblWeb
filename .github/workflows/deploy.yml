@@ -26,28 +26,28 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      # 拉取项目代码
+      # 拉取代码
       - name: Checkout
         uses: actions/checkout@v4
+
+      # 安装 pnpm 12.16.1
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
 
       # 安装 Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-
-      # 安装 pnpm
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       # 安装依赖
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 构建项目
+      # 构建 Vue 项目
       - name: Build
         run: pnpm build
 
@@ -55,13 +55,13 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      # 上传构建文件
+      # 上传 dist
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
 
-      # 部署
+      # 发布网站
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
