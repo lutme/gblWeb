@@ -59,7 +59,13 @@ body::after {
   color: var(--text-hi);
 }
 
-/* ---- 自定义滚动条：站点自己的视觉语言 ---- */
+/* ---- 内部滚动面板用站点视觉语言；页面根滚动条隐藏 ---- */
+html {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+  display: none;
+}
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
