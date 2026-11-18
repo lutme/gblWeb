@@ -67,7 +67,7 @@ if err := gbl.Shutdown(ctx); err != nil {
 - 在 `Run` 之前调用返回 `http.ErrServerClosed`；
 - 关闭时同时关闭所有日志文件句柄。
 
-> `Run` 已自带信号优雅停机；当你需要*主动*触发（健康检查 kill 开关、测试、嵌入）时才用 `Shutdown`。
+> `Run` 已自带信号优雅停机；当你需要**主动**触发（健康检查 kill 开关、测试、嵌入）时才用 `Shutdown`。
 
 ## 启动失败与日志兜底
 

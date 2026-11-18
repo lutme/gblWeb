@@ -39,7 +39,7 @@ type PanicProcessor func(err any) (any, HttpStatus)
 type HttpStatus int
 ```
 
-`RegisterPanicProcessor(p)` 在引擎上安装你的 panic 渲染器。**一旦注册，它就接管所有被恢复值的渲染**——显式中止*和*真实崩溃都归它。因此你要为"不泄露内部错误"负全责：
+`RegisterPanicProcessor(p)` 在引擎上安装你的 panic 渲染器。**一旦注册，它就接管所有被恢复值的渲染**——显式中止和真实崩溃都归它。因此你要为"不泄露内部错误"负全责：
 
 ```go
 gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {

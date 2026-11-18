@@ -65,7 +65,7 @@ func SetMaxUploadFileSize(size ByteSize) // 每个上传文件的硬上限（超
 | 设置 | 控制什么 | 超限后果 | 默认值 |
 |---|---|---|---|
 | `SetMaxBodySize` | **整个请求 body 的总大小**（含 multipart 上传） | 413 拒绝 | **5 MiB** |
-| `SetMaxFileSize` | multipart 解析的**内存阈值**——不超过此大小的 part 留在内存，更大的落临时文件 | 无；它*不是*上限，从不拒绝请求 | **2 MiB** |
+| `SetMaxFileSize` | multipart 解析的**内存阈值**——不超过此大小的 part 留在内存，更大的落临时文件 | 无；它**不是**上限，从不拒绝请求 | **2 MiB** |
 | `SetMaxUploadFileSize` | **每一个单独上传文件的最大大小**（任意字段、任意 part） | 进入 handler 前 413 拒绝 | **1 MiB** |
 
 三个一起理解：
