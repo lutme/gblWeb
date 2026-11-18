@@ -33,19 +33,28 @@ const anchorLinks = [
   { id: 'quickstart', key: 'nav.quickstart' },
 ]
 
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+}
+
 function goAnchor(id: string) {
   store.mobileNavOpen = false
   if (isHome.value) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+    // 旧版跨页锚点在 hash 路由下留下 #/#xxx 残参；先清掉再滚
+    if (route.hash) router.replace({ name: 'home' }).then(() => setTimeout(() => scrollToSection(id), 60))
+    else scrollToSection(id)
   } else {
-    router.push({ name: 'home', hash: `#${id}` })
+    store.pendingAnchor = id
+    router.push({ name: 'home' })
   }
 }
 
 function goHome() {
   store.mobileNavOpen = false
-  if (isHome.value) window.scrollTo({ top: 0, behavior: 'smooth' })
-  else router.push({ name: 'home' })
+  if (isHome.value) {
+    if (route.hash) router.replace({ name: 'home' }).then(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
+    else window.scrollTo({ top: 0, behavior: 'smooth' })
+  } else router.push({ name: 'home' })
 }
 
 // 懒加载视图挂载晚于 header，IntersectionObserver 一次性 observe 会落空；按滚动位置计算当前区块

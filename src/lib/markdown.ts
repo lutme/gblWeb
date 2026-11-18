@@ -142,6 +142,14 @@ export async function renderDoc(raw: string): Promise<RenderedDoc> {
     return self.renderToken(tokens, idx, options)
   }
 
+  // hash 路由下绝对路径内链会跳出 base 触发服务器 404；改写为路由 hash 形式
+  md.renderer.rules.link_open = (tokens, idx, options, _env, self) => {
+    const token = tokens[idx]
+    const href = token.attrGet('href') ?? ''
+    if (href.startsWith('/')) token.attrSet('href', `#${href}`)
+    return self.renderToken(tokens, idx, options)
+  }
+
   // The page header already renders the section title; drop the document's own h1.
   const html = md.render(raw).replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>\s*/, '')
   return { html, toc }

@@ -9,5 +9,7 @@ export const useAppStore = defineStore('app', () => {
 
   const mobileNavOpen = ref(false)
 
-  return { locale, mobileNavOpen }
+  const pendingAnchor = ref('')
+
+  return { locale, mobileNavOpen, pendingAnchor }
 })

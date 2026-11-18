@@ -33,8 +33,8 @@ function onPointerLeave() {
   if (el) el.style.transform = 'perspective(1100px) rotateY(-4deg) rotateX(2deg)'
 }
 
-function goQuickstart() {
-  document.getElementById('quickstart')?.scrollIntoView({ behavior: 'smooth' })
+function goSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 }
 
 onMounted(() => {
@@ -69,7 +69,7 @@ onMounted(() => {
         </h1>
         <p class="hero-sub" data-hero-stagger>{{ t('hero.subtitle') }}</p>
         <div class="hero-cta" data-hero-stagger>
-          <a href="#quickstart" class="btn btn-primary" @click.prevent="goQuickstart">
+          <a href="#quickstart" class="btn btn-primary" @click.prevent="goSection('quickstart')">
             <Icon icon="lucide:rocket" width="17" />{{ t('hero.ctaStart') }}
           </a>
           <router-link to="/docs" class="btn btn-ghost">
@@ -118,7 +118,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <a class="scroll-hint" href="#features" aria-hidden="true">
+    <a class="scroll-hint" href="#features" aria-hidden="true" @click.prevent="goSection('features')">
       <span>{{ t('hero.scrollHint') }}</span>
       <Icon icon="lucide:chevrons-down" width="18" />
     </a>
