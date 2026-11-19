@@ -32,7 +32,7 @@ func (s Signup) Validate() error {
     return nil
 }
 
-// handler 无需判空；Validate 返回非 nil 错误即得通用 400
+// handler 无需判空；Validate 返回非 nil 错误即 400，错误文本原样回显
 gbl.Post("/signup", func(s Signup) string {
     return "signed up: " + s.Email
 })
@@ -42,8 +42,8 @@ gbl.Post("/signup", func(s Signup) string {
 
 ## 失败时的行为
 
-- 非 nil 错误以**通用 400** 中断请求，handler 不会执行；
-- 错误文本**只写进服务端日志**（`request validation failed` + error 字段），绝不回显给客户端——所以 `Validate` 里可以放心描述内部规则；
+- 非 nil 错误以 **400** 中断请求，handler 不会执行；
+- 错误文本**原样作为响应体**——消息是你自己写的，回显与否的所有权在你：想给客户端看什么就写什么，敏感内容别写进 `Validate`；
 - 多个业务参数都实现了 `Validatable` 时，按参数顺序校验，**第一个失败即返回**。
 
 ## 值接收者与指针接收者都支持
@@ -77,9 +77,9 @@ func (s Signup) Validate() error {
 
 | 阶段 | 失败 | 客户端 | 日志 |
 |---|---|---|---|
-| 装配 | 缺字段 / 类型转换失败 / 非法 JSON | 400 + **具体原因** | — |
-| 校验 | `Validate` 返回错误 | 400 **通用文本** | 完整错误 |
+| 装配 | 缺 JSON 成员 / 类型转换失败 | 通用 400 | 反射细节（参数名、Go 类型、strconv 详情） |
+| 校验 | `Validate` 返回错误 | 400 + **错误文本原样** | — |
 
-装配错误描述的是客户端自己的畸形输入，回显安全；校验错误可能暴露业务规则，所以只进日志。
+装配错误由框架从反射内部拼出，可能带内部标识，所以只回通用 400、细节进日志；校验消息是开发者亲手写的，披露责任在你，故原样到达客户端。
 
 下一章：[文件上传](/docs/uploads)。

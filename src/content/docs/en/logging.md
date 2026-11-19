@@ -1,6 +1,6 @@
 # Logging
 
-Every internal message (recovered panics, validation failures, access-log lines, startup events) is routed through the engine `Logger`, so the application decides destinations and formats.
+Every internal message (recovered panics, binding failures, access-log lines, startup events) is routed through the engine `Logger`, so the application decides destinations and formats.
 
 ## The Logger interface
 
@@ -93,34 +93,18 @@ gbl.Use(gbl.AccessLog)
 
 It reads results in the response phase — after `c.Next()` the status code and size are final. Richer observability (metrics, tracing) is middleware too: implement it yourself with `c.StatusCode()`, `c.Size()` and timing around `c.Next()`; the framework ships no transport dependencies.
 
-## File logging (configuration-driven)
+## File logging (integration example)
 
-Configure destinations in the `[gbl]` section of `application.ini`:
+The framework itself prints **only to the console** — it ships no built-in file logging. To write files, install a `Logger` pointed at a file:
 
-```ini
-[gbl]
-logDir  = ./logs      # auto-creates info.log / warn.log / error.log
-# logFile = ./app.log  # all levels merged into one file (lowest priority)
-# infoLog  = ./logs/info.log   # explicit per-level paths (highest priority)
-# warnLog  = ./logs/warn.log
-# errorLog = ./logs/error.log
+```go
+f, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+if err != nil {
+    log.Fatal(err)
+}
+gbl.SetLogger(gbl.NewStdLogger(log.New(f, "", log.LstdFlags)))
 ```
 
-Each level's destination is chosen by priority: **explicit per-level path > logDir/<level>.log > logFile**. Rules:
-
-- levels with a file configured write to **both** stdout and the file (mirrored, not either/or);
-- levels pointing at the same path share one file handle;
-- levels without a file still print to stdout — console output stays complete;
-- all three keys empty = file logging off, console only;
-- missing directories are created automatically;
-- every open file is closed on `Shutdown`.
-
-### A custom Logger wins
-
-With `SetLogger` installed, the built-in file routing **never overrides your sink** — the framework prints one startup Warn (`ini log keys ignored because a custom Logger is installed`) and steps aside. File destinations and your structured backend: pick one to lead.
-
-### When a log destination is broken
-
-File logging configured but unopenable (bad path, no permission, full disk): startup fails, and the reason lands in three places — one console line, `gbl-start-error.log` beside the executable, and the panic value. See [Lifecycle](/docs/lifecycle).
+For console + file, use `io.MultiWriter(os.Stdout, f)`. Rotation, per-level files and richer routing belong to a zap/slog adapter — or the future gbl-boot integration layer. The kernel ships no built-in file logging and writes no fallback files.
 
 Next: [CORS](/docs/cors).

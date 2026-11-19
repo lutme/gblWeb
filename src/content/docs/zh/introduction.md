@@ -54,7 +54,7 @@ GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用�
 
 ### 严格错误策略
 
-非预期 panic **永不回显内部信息**：原因写进服务端日志，客户端只拿通用 `500`。只有两样东西会原样到达客户端——显式的 `Abort`，以及你注册的 `PanicProcessor`。校验失败同理：客户端拿通用 `400`，规则细节只进日志。
+非预期 panic **永不回显内部信息**：原因写进服务端日志，客户端只拿通用 `500`。回显权按**消息是谁写的**划分——开发者写的原样到达客户端：显式的 `Abort`、你注册的 `PanicProcessor`、`Validate` 返回的错误文本；框架拼出的内部细节（绑定失败的反射信息）只进日志，客户端拿通用 `400`。
 
 ### 失败要趁早（fail-fast）
 
@@ -70,11 +70,11 @@ GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用�
 | 上下文 | 池化 `Context`、请求级 key/value、泛型取值 `Value[T]` / `MustValue[T]` |
 | 校验 | `Validatable` 接口，装配后 handler 前自动校验 |
 | 错误 | `Abort` / `PanicProcessor` / 通用 500 兜底，内部细节零泄漏 |
-| 日志 | 结构化 `Logger` 接口、彩色控制台、按级别分文件、`AccessLog` 中间件、启动横幅 |
-| 配置 | `application.ini`（camelCase / kebab-case 双写法）、TLS、超时、通用 INI 读取器 |
+| 日志 | 结构化 `Logger` 接口、彩色控制台、`SetLogger` 接入任意后端、`AccessLog` 中间件、启动横幅 |
+| 配置 | `Configure` 代码配置、TLS、超时；内核不读配置文件 |
 | 上传 | 三重独立限额（总 body / 内存阈值 / 单文件），413 拒绝 |
 | CORS | 结构体配置、预检处理、凭据+通配符危险组合启动即拦截 |
-| 生命周期 | 信号优雅停机、`Shutdown` 主动停机、启动失败三路日志兜底 |
+| 生命周期 | 信号优雅停机、`Shutdown` 主动停机、启动失败先日志后 panic |
 
 ## 环境要求
 

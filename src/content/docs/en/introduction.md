@@ -54,7 +54,7 @@ GBL exposes exactly **one** package-level engine. `Get/Post/Use/Group/Run/...` a
 
 ### Strict error policy
 
-Unexpected panics **never echo internal details**: the cause goes to the server-side log, the client only receives a generic `500`. Exactly two things reach the client verbatim — an explicit `Abort`, and a `PanicProcessor` you registered. Validation failures work the same way: the client gets a generic `400`, rule details go only to the log.
+Unexpected panics **never echo internal details**: the cause goes to the server-side log, the client only receives a generic `500`. Echo rights are split by **who authored the message** — developer-authored text reaches the client verbatim: an explicit `Abort`, a `PanicProcessor` you registered, and the error text returned by `Validate`; framework-assembled internals (reflection detail from binding failures) go only to the log, with a generic `400` on the wire.
 
 ### Fail fast
 
@@ -70,11 +70,11 @@ Route conflicts, invalid path syntax, invalid configuration, unrecoverable param
 | Context | Pooled `Context`, request-scoped key/value, generic accessors `Value[T]` / `MustValue[T]` |
 | Validation | `Validatable` interface, checked after binding and before the handler |
 | Errors | `Abort` / `PanicProcessor` / generic 500 fallback, zero leakage of internal details |
-| Logging | Structured `Logger` interface, colored console, per-level files, `AccessLog` middleware, startup banner |
-| Configuration | `application.ini` (camelCase / kebab-case), TLS, timeouts, general-purpose INI reader |
+| Logging | Structured `Logger` interface, colored console, any backend via `SetLogger`, `AccessLog` middleware, startup banner |
+| Configuration | `Configure` in code, TLS, timeouts; the kernel reads no configuration file |
 | Uploads | Three independent limits (total body / memory threshold / per file), 413 rejection |
 | CORS | Struct-based configuration, preflight handling, credentials + wildcard combination rejected at startup |
-| Lifecycle | Signal-driven graceful shutdown, explicit `Shutdown`, triple logging fallback on startup failure |
+| Lifecycle | Signal-driven graceful shutdown, explicit `Shutdown`, log-then-panic on startup failure |
 
 ## Requirements
 

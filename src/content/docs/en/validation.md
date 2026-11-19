@@ -32,7 +32,7 @@ func (s Signup) Validate() error {
     return nil
 }
 
-// The handler needs no nil checks; a non-nil error from Validate yields a generic 400
+// The handler needs no nil checks; a non-nil Validate error yields a 400 echoing its text
 gbl.Post("/signup", func(s Signup) string {
     return "signed up: " + s.Email
 })
@@ -42,8 +42,8 @@ gbl.Post("/signup", func(s Signup) string {
 
 ## Behavior on failure
 
-- A non-nil error aborts the request with a **generic 400**; the handler never runs;
-- the error text is **written only to the server log** (`request validation failed` + the error field), never echoed to the client — so `Validate` can safely describe internal rules;
+- A non-nil error aborts the request with a **400 whose body is the error text verbatim**; the handler never runs;
+- you wrote the message, so you own what it discloses — write what the client should see, and keep anything sensitive out of `Validate`;
 - when several business parameters implement `Validatable`, they are checked in parameter order and **the first failure returns immediately**.
 
 ## Value and pointer receivers both work
@@ -77,9 +77,9 @@ func (s Signup) Validate() error {
 
 | Phase | Failure | Client | Log |
 |---|---|---|---|
-| binding | missing field / conversion failure / malformed JSON | 400 + **the specific reason** | — |
-| validation | `Validate` returns an error | 400 **generic text** | the full error |
+| binding | missing JSON member / conversion failure | generic 400 | reflection detail (parameter names, Go types, strconv detail) |
+| validation | `Validate` returns an error | 400 + **the error text verbatim** | — |
 
-Binding errors describe the client's own malformed input, safe to echo; validation errors could expose business rules, so they go only to the log.
+Binding errors are assembled by the framework from reflection internals and may carry internal identifiers, so only a generic 400 goes out with the detail in the log; validation messages are authored by the developer, who owns what they disclose, so they reach the client verbatim.
 
 Next: [File Uploads](/docs/uploads).

@@ -1,6 +1,6 @@
 # File Uploads
 
-Files are bound only on body methods (POST/PUT/PATCH) carrying `multipart/form-data`. A file parameter matches the file part whose **field name equals the parameter name** (exact first, then case-insensitive). This file-lookup path and the text form/query parameters are two independent sources that never interfere.
+Files are bound only on body methods (POST/PUT/PATCH) carrying `multipart/form-data`. A file parameter matches the file part whose **field name equals the parameter name** (matched exactly). This file-lookup path and the text form/query parameters are two independent sources that never interfere.
 
 ## Supported parameter types
 

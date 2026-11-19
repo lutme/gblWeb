@@ -109,9 +109,8 @@ See [CORS](/docs/cors).
 
 | Symbol | Signature | Description |
 |---|---|---|
-| `ReadIni` | `func ReadIni(path string) (map[string]map[string]string, error)` | parse any INI file |
-| `IniBySection` | `func IniBySection(section string) (map[string]string, bool)` | read a whole section of the application.ini snapshot (a copy) |
-| `IniBySectionAndKey` | `func IniBySectionAndKey(section, key string) (string, bool)` | read a single value from the snapshot |
+| `Configure` | `func Configure(fn func(*Config))` | override configuration in code; fn receives the Config pre-filled with defaults; call before Run; nil is a no-op |
+| `Config` | struct (8 exported fields) | Name/Port/CertFile/KeyFile + four timeouts; TLS derived from the two paths |
 
 See [Configuration](/docs/configuration).
 
@@ -124,6 +123,6 @@ See [Configuration](/docs/configuration).
 | readTimeout / readHeaderTimeout / writeTimeout / idleTimeout | 10s / 5s / 10s / 60s |
 | total body / memory threshold / per file | 5 MiB / 2 MiB / 1 MiB |
 | signal shutdown window | 5s |
-| TLS | off (enabled only when certFile+keyFile are both present) |
+| TLS | off (enabled only when CertFile+KeyFile are both present) |
 | CORS | off |
-| file logging | off (console only) |
+| log output | console only (file logging via `SetLogger` integration) |

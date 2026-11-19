@@ -74,23 +74,24 @@ Use struct binding for deployment-sensitive endpoints; keep scalar signatures fo
 
 ## TLS
 
-HTTPS is enabled when `application.ini` provides both `certFile` and `keyFile`:
+HTTPS is enabled when `Configure` sets both `CertFile` and `KeyFile`:
 
-```ini
-[gbl]
-port     = 443
-certFile = /etc/tls/server.crt
-keyFile  = /etc/tls/server.key
+```go
+gbl.Configure(func(c *gbl.Config) {
+    c.Port     = "443"
+    c.CertFile = "/etc/tls/server.crt"
+    c.KeyFile  = "/etc/tls/server.key"
+})
 ```
 
-Only one of them does nothing. Certificate paths resolve relative to the working directory; absolute paths are recommended in containers.
+Only one of them does nothing. Certificate paths resolve against the **process working directory at launch**, not the executable's directory; absolute paths are recommended in containers.
 
 ## Container checklist
 
 - **Signals**: `Run` handles SIGTERM graceful shutdown (5-second window); set Kubernetes `terminationGracePeriodSeconds` ≥ 10;
-- **Port**: the ini `port` or the default 9801 — align with the Service/container port;
-- **Logs**: console-only is recommended in containers (configure no file keys), let the collector take stdout; when files are needed, mount a volume for `logDir`;
-- **Configuration**: place `application.ini` in the working directory, or mount it there via ConfigMap;
+- **Port**: `Port` from `Configure` or the default 9801 — align with the Service/container port;
+- **Logs**: console-only by default, let the collector take stdout; when files are needed, point `SetLogger` at a mounted volume (see [Logging](/docs/logging));
+- **Configuration**: the kernel reads no config file — the application resolves environment/ConfigMap sources itself, then calls `Configure`;
 - **Source**: handle the parameter-name constraint with one of the three solutions above.
 
 ## Version display

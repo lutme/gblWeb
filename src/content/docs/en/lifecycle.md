@@ -5,19 +5,19 @@
 `gbl.Run()` starts the single engine on the configured address and **blocks** until stopped. The internal order is deliberate:
 
 ```text
-1. Read the application.ini snapshot (missing = empty config; malformed = fatal)
-2. Initialize logging first (destinations are plain strings, cannot fail to parse)
-3. Parse the full configuration (invalid values can now be written to the configured log files)
-4. generateRoute: validate handlers, build bind plans, recover parameter names,
+1. Take the configuration Configure left (defaults included; the kernel reads no file)
+2. generateRoute: validate handlers, build bind plans, recover parameter names,
    freeze middleware chains, insert into routing trees
-5. Listen on the port (occupied → failure)
+3. Listen on the port (occupied → failure)
+4. Assemble the http.Server (timeouts from the configuration; a corsHandler
+   wraps it when CORS is configured)
+5. Publish the server reference (so a concurrent Shutdown can reach it) and
+   install the signal watcher
 6. Print the startup banner + status table
 7. Start serving (ServeTLS when TLS is configured)
 ```
 
-**Logging starts before the rest of configuration validation** — so even invalid config values, route conflicts and port collisions land in your configured log files, not just stderr.
-
-Every fatal startup error panics, and **the reason is logged through the Logger before the panic** (fail-fast).
+The configuration is finalized by `Configure` before `Run` (see [Configuration](/docs/configuration)); registration and configuration errors surface in the generateRoute / listen stages. Every fatal startup error panics, and **the reason is logged through the Logger before the panic** (fail-fast).
 
 ## The startup banner
 
@@ -65,35 +65,19 @@ if err := gbl.Shutdown(ctx); err != nil {
 
 - Repeatable calls (converged internally via once);
 - callable from a goroutine **other than Run's**;
-- called before `Run`, it returns `http.ErrServerClosed`;
-- closing also closes every log file handle.
+- called before `Run`, it returns `http.ErrServerClosed`.
 
 > `Run` already handles signal-driven graceful shutdown; use `Shutdown` only when you need to trigger it *explicitly* (health-check kill switches, tests, embedding).
 
-## Startup failure and the logging fallback
+## Startup failure (fail-fast)
 
-All startup, configuration and registration failures are fail-fast: the reason is logged through the engine Logger first, then the process panics — a deployment that dies before serving still leaves the reason in the log, not just a bare stack.
-
-### When the log destination itself is broken
-
-File logging configured but unopenable (bad path, no write permission, full disk): there is no file to write the reason into. GBL falls back along **three paths at once**:
-
-1. restores the **default console logger** and prints one error line stating the reason and the fix;
-2. writes a plain-language explanation to **`gbl-start-error.log` beside the running executable** (a location you always know, independent of the startup working directory);
-3. panics with the reason and a pointer to that file.
+All startup, configuration and registration failures are fail-fast: the reason is logged through the engine Logger first, then the process panics — a deployment that dies before serving still leaves the reason in your log sink, not just a bare stack. A busy port, a route conflict and a dangerous CORS policy all take this path.
 
 ```text
-2026-11-13T10:00:00+08:00
-gbl: startup aborted - the configured file logging could not be initialized.
-Reason: open /var/log/gbl/error.log: permission denied
-Fix: check the logFile/logDir/infoLog/warnLog/errorLog value in application.ini;
-     the path must exist and be writable. Then restart.
+2026/11/19 10:00:00 gbl: ERROR startup aborted reason=listen tcp :9801: bind: address already in use
 ```
 
-Two details:
-
-- The fallback file appears **only** when file logging was configured but could not be opened. File logging never enabled ⇒ no such file; other startup failures (route conflicts, invalid config, port occupied) print only to the console/configured logs.
-- Under `go run .` the "executable" is a temporary build artifact, so the fallback file lands in the temporary build directory; running a `go build` binary puts it **beside that binary**.
+Logs go to the console by default, or to your sink when a custom `Logger` is installed (see [Logging](/docs/logging)). The kernel writes no fallback files.
 
 ## Embedding and testing
 

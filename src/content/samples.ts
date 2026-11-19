@@ -17,19 +17,17 @@ export const installCode = `go get github.com/gblgo/gbl`
 export const runCode = `go run .
 # GET http://localhost:9801/hello  ->  hello, gbl`
 
-export const iniCode = `[gbl]
-name = myapp
-port = 9801
+export const configureCode = `gbl.Configure(func(c *gbl.Config) {
+    c.Name = "myapp"
+    c.Port = "9802"
 
-# TLS is enabled when both certFile and keyFile are set
-certFile = server.crt
-keyFile  = server.key
+    // TLS is enabled when both CertFile and KeyFile are set
+    c.CertFile = "server.crt"
+    c.KeyFile  = "server.key"
 
-readTimeout  = 10s
-writeTimeout = 10s
-
-# Level-split file logs: info.log / warn.log / error.log
-logDir = ./logs`
+    c.ReadTimeout  = 10 * time.Second
+    c.WriteTimeout = 10 * time.Second
+})`
 
 export const crudCode = `package main
 

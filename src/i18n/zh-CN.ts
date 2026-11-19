@@ -122,9 +122,9 @@ export default {
     step2: '编写',
     step2Desc: '注册路由，写业务函数。签名随意，装配自动。',
     step3: '运行',
-    step3Desc: '默认监听 :9801，Ctrl+C 优雅停机。application.ini 可选。',
-    iniTitle: 'application.ini（可选）',
-    iniNote: '不给文件即全用默认；键名 camelCase 与 kebab-case 都接受。',
+    step3Desc: '默认监听 :9801，Ctrl+C 优雅停机。配置全在代码里。',
+    configureTitle: 'Configure（可选）',
+    configureNote: '内核不读配置文件：默认值开箱即用，要改就在 Run 之前用代码覆盖。',
     docsCta: '查看完整入门指南',
   },
   examples: {

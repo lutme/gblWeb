@@ -118,27 +118,25 @@ curl -X POST http://localhost:9801/user \
 
 Look at the third request: you wrote no decoding code at all. `User` is bound from the body automatically, the returned `*User` becomes JSON automatically, and the `Content-Type` was chosen at registration time from the return type.
 
-## Optional configuration: application.ini
+## Optional configuration: Configure
 
-Without a config file everything uses defaults. To change the port, enable TLS or file logging, place an `application.ini` in the **working directory**:
+Without configuration everything uses defaults. To change the port, enable TLS or tune timeouts, override them in code before `Run`:
 
-```ini
-[gbl]
-name = myapp
-port = 9802
+```go
+gbl.Configure(func(c *gbl.Config) {
+    c.Name = "myapp"
+    c.Port = "9802"
 
-# HTTPS is enabled when certFile and keyFile are both present
-certFile = server.crt
-keyFile  = server.key
+    // HTTPS is enabled when CertFile and KeyFile are both present
+    c.CertFile = "server.crt"
+    c.KeyFile  = "server.key"
 
-readTimeout  = 10s
-writeTimeout = 10s
-
-# Split log files by level: info.log / warn.log / error.log
-logDir = ./logs
+    c.ReadTimeout  = 10 * time.Second
+    c.WriteTimeout = 10 * time.Second
+})
 ```
 
-Keys accept both `camelCase` and `kebab-case` (`readTimeout` is equivalent to `read-timeout`). The full key table is in [Configuration](/docs/configuration).
+The kernel reads no configuration file — configuration lives entirely in code. The full field table is in [Configuration](/docs/configuration).
 
 ## The complete journey of a request
 

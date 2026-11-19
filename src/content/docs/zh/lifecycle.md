@@ -5,18 +5,16 @@
 `gbl.Run()` 在配置的地址上启动唯一的引擎并**阻塞**直到停止。内部顺序刻意安排：
 
 ```text
-1. 读取 application.ini 快照（缺失 = 空配置；非法 = 致命）
-2. 先初始化日志（目的地是纯字符串，不会解析失败）
-3. 解析完整配置（非法值此时已能写进配置的日志文件）
-4. generateRoute：校验 handler、构建装配计划、恢复参数名、冻结中间件链、插入路由树
-5. 监听端口（占用 → 失败）
+1. 取 Configure 留下的配置（含默认值；内核不读任何文件）
+2. generateRoute：校验 handler、构建装配计划、恢复参数名、冻结中间件链、插入路由树
+3. 监听端口（占用 → 失败）
+4. 组装 http.Server（超时来自配置；配置了 CORS 则包一层 corsHandler）
+5. 发布 server 引用（并发的 Shutdown 能够到它）并挂上信号监听
 6. 打印启动横幅 + 状态表
 7. 开始服务（配置了 TLS 则 ServeTLS）
 ```
 
-**日志先于其余配置校验启动**——这样连非法配置值、路由冲突、端口占用都能落在你配置的日志文件里，而不只是 stderr。
-
-任何致命启动错误都会 panic，且**先经 Logger 记录原因再 panic**（fail-fast）。
+配置在 `Run` 之前就已由 `Configure` 定稿（见[配置](/docs/configuration)）；注册与配置类错误都在 generateRoute / 监听阶段暴露。任何致命启动错误都会 panic，且**先经 Logger 记录原因再 panic**（fail-fast）。
 
 ## 启动横幅
 
@@ -64,35 +62,19 @@ if err := gbl.Shutdown(ctx); err != nil {
 
 - 可重复调用（内部 once 收敛）；
 - 可从**不同于 Run** 的 goroutine 调用；
-- 在 `Run` 之前调用返回 `http.ErrServerClosed`；
-- 关闭时同时关闭所有日志文件句柄。
+- 在 `Run` 之前调用返回 `http.ErrServerClosed`。
 
 > `Run` 已自带信号优雅停机；当你需要**主动**触发（健康检查 kill 开关、测试、嵌入）时才用 `Shutdown`。
 
-## 启动失败与日志兜底
+## 启动失败（fail-fast）
 
-所有启动、配置、注册类失败都是 fail-fast：先经引擎 Logger 记录原因，再 panic——还没开始服务就挂掉的部署，也会在日志里留下原因，而不只是一条裸栈。
-
-### 当日志目的地本身坏掉
-
-配置了文件日志却打不开（路径错误、无写权限、磁盘满）时，没有文件可供写入原因。GBL 同时走**三路兜底**：
-
-1. 恢复**默认控制台 logger**，打印一行错误，写明原因与修复方法；
-2. 把一份通俗说明写入**运行中可执行文件旁边的 `gbl-start-error.log`**（一个你永远知道位置的地方，与启动工作目录无关）；
-3. 以原因和指向该文件的提示 panic。
+所有启动、配置、注册类失败都是 fail-fast：先经引擎 Logger 记录原因，再 panic——还没开始服务就挂掉的部署，也会在你的日志 sink 里留下原因，而不只是一条裸栈。端口占用、路由冲突、危险的 CORS 策略都走这条路。
 
 ```text
-2026-11-13T10:00:00+08:00
-gbl: startup aborted - the configured file logging could not be initialized.
-Reason: open /var/log/gbl/error.log: permission denied
-Fix: check the logFile/logDir/infoLog/warnLog/errorLog value in application.ini;
-     the path must exist and be writable. Then restart.
+2026/11/19 10:00:00 gbl: ERROR startup aborted reason=listen tcp :9801: bind: address already in use
 ```
 
-两个细节：
-
-- 兜底文件**仅**在配置了文件日志却打不开时才出现。从未启用文件日志 ⇒ 不会有这个文件；其他启动失败（路由冲突、非法配置、端口占用）只打到控制台/已配置的日志。
-- `go run .` 时的"可执行文件"是临时构建产物，兜底文件落在临时构建目录；`go build` 后运行二进制时，落在**该二进制旁边**。
+日志默认只在控制台；装了自定义 `Logger` 就落在你的 sink 里（见[日志](/docs/logging)）。内核不写任何兜底文件。
 
 ## 嵌入与测试
 

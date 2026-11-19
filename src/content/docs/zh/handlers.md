@@ -41,7 +41,7 @@ gbl.Get("/bad", func() (string, error) { ... })     // ✗ 启动失败：最多
 - **JSON 模式**：`application/json`（含 `+json` 后缀，如 `application/vnd.api+json`）且 body 非空白 → 只从 JSON body 取，form/query 一律不看。
 - **form/query 模式**：其他所有情况（含 JSON 但 body 为空）→ 从 form/query 值取。`POST`/`PUT`/`PATCH` 下，body 字段与同名 query 都能绑定，**body 优先**。
 
-在任一来源内部，名字匹配**先精确、再忽略大小写**（对齐 `encoding/json` 的字段匹配）。
+gbl 自己的名字查找一律**精确匹配**：路径/form/query 的 key、或顶层 JSON 成员，都按原样匹配，不做大小写折叠。（JSON body 内部的结构体字段由 `encoding/json` 解码，它按字段名忽略大小写匹配——这是唯一的例外。）
 
 ```go
 // GET /user/42?verbose=true
@@ -95,7 +95,7 @@ gbl.Post("/user", func(u User, verbose bool) string {
 })
 ```
 
-缺一个顶层成员就是请求期 **400**（错误信息会指明缺哪个字段），而不是静悄悄给零值。body 不是对象（如数组）同样 400。
+缺一个顶层成员就是请求期 **400**（通用文本；缺哪个成员等细节只进服务端日志），而不是静悄悄给零值。body 不是对象（如数组）同样 400。
 
 ### 规则 3：路径参数依然优先
 
@@ -111,25 +111,36 @@ gbl.Post("/user/:id", func(id int, verbose bool) string {
 
 ## form/query 模式的结构体装配
 
-结构体参数在 form/query 模式下**按字段名**填充（忽略大小写，无需任何 struct tag）：
+结构体参数在 form/query 模式下**按绑定名**填充。绑定名在注册期确定并缓存；请求 key **逐字节精确匹配**，不做大小写折叠，也绝不转换请求数据本身：
 
-- 每个字段先查同名路径参数，再查 form/query 值；
-- 嵌套结构体递归同样规则；
-- `*struct` 即使没有同名来源也会被分配（零值），好让它的字段逐个绑定。
+- **写了 json tag**：按 tag 名原样绑定（`json:"user_name"` 就绑 `user_name`）；
+- **没写 json tag**：字段名首字母转小写（`Name` → `name`、`Id` → `id`），于是小写请求 key 无需任何 tag 即可绑定导出字段；
+- `json:"-"` 的字段整个跳过；`json:"-,"` 表示字段名就叫 `-`。
+
+> **驼峰约定**：字段应命名为 `Id` 而非 `ID`——只转首字母，`ID` 会派生出 `iD`，请求 key `id` 就绑不上了。
+
+每个字段的取值优先级：先查同名路径参数，再查 form/query 值；嵌套结构体递归同样规则；`*struct` 即使没有同名来源也会被分配（零值），好让它的字段逐个绑定。
 
 ```go
 type User struct {
-    ID   int
-    Name string
+    Id   int    // 无 tag → 绑定名 id
+    Name string // 无 tag → 绑定名 name
 }
 
-// GET /user/42?name=ada → u.ID == 42（来自 :id），u.Name == "ada"
+// GET /user/42?name=ada → u.Id == 42（来自 :id），u.Name == "ada"
 gbl.Get("/user/:id", func(u User) string {
-    return fmt.Sprintf("%d %s", u.ID, u.Name)
+    return fmt.Sprintf("%d %s", u.Id, u.Name)
 })
+
+type Tagged struct {
+    Name string `json:"user_name"` // 有 tag → 绑定名 user_name 原样
+}
+
+// POST /t · form body: user_name=ada → t.Name == "ada"
+gbl.Post("/t", func(t Tagged) string { return t.Name })
 ```
 
-> JSON 模式下不会这样跨填——单个结构体参数只能来自 body（规则 1）。
+> JSON 模式下不会这样跨填——单个结构体参数只能来自 body（规则 1）；body 内部的结构体字段由 `encoding/json` 解码（那里的字段匹配忽略大小写，同样认 json tag）。
 
 ## 标量与复合类型的转换表
 
@@ -147,7 +158,7 @@ form/query 与路径参数都是字符串，GBL 按目标类型转换：
 | 切片（`[]int` 等） | 消费**重复值**（`?tag=a&tag=b`）；缺失 → 空切片 |
 | `[]byte` | 特殊：取第一个值的原始字节，不是重复值 |
 | 数组（`[3]int`） | 重复值数量**必须恰好等于数组长度**，否则 400 |
-| 结构体 | 按字段名递归（见上） |
+| 结构体 | 按绑定名递归（见上） |
 
 ```go
 // GET /filter?tag=go&tag=web&limit=10&ratio=0.5&debug=true
@@ -167,7 +178,7 @@ gbl.Get("/maybe", func(p *int) string {
 })
 ```
 
-标量参数取**第一个值**；要消费重复值请用切片或数组。转换失败（如 `limit=abc`）→ 400，错误信息指明参数名与原因。
+标量参数取**第一个值**；要消费重复值请用切片或数组。转换失败（如 `limit=abc`）→ 通用 400，参数名与原因只进服务端日志。
 
 ## 返回值自动序列化
 
@@ -186,7 +197,7 @@ Content-Type 在**注册时**就根据返回值的静态类型选好：
 gbl.Get("/text", func() string { return "plain" })
 gbl.Get("/num", func() int { return 42 })                       // "42"
 gbl.Get("/json", func() map[string]int { return map[string]int{"n": 3} })
-gbl.Get("/obj", func() *User { return &User{ID: 1} })           // {"ID":1,...}
+gbl.Get("/obj", func() *User { return &User{Id: 1} })           // {"Id":1,...}
 gbl.Get("/none", func() {})                                     // 空 body
 gbl.Get("/nil", func() *User { return nil })                    // 空 body
 ```
@@ -222,9 +233,9 @@ Go 的反射只能拿到参数**类型**，拿不到**名字**。GBL 在启动�
 
 | 失败 | 状态码 | 客户端看到 |
 |---|---|---|
-| 参数缺失（多参数 JSON）/ 转换失败 / body 非法 | 400 | 具体错误信息（客户端自己的输入问题，可以回显） |
+| 参数缺失（多参数 JSON）/ 转换失败 | 400 | 通用 `Bad Request`（参数名、Go 类型等反射细节只进日志） |
 | body 超过总限额 | 413 | `Request Entity Too Large` |
-| 校验失败（`Validatable`） | 400 | 通用 `Bad Request`（规则细节只进日志） |
+| 校验失败（`Validatable`） | 400 | `Validate` 错误文本原样回显（消息是你写的，披露责任在你） |
 | 返回值序列化失败 | 500 | 固定文本（服务端问题，不泄漏） |
 
 ## 完整示例：一个订单接口
@@ -236,7 +247,7 @@ type OrderQuery struct {
 }
 
 // GET /orders?status=paid&limit=20
-// 结构体按字段名从 query 装配，Limit 自动转 int
+// 结构体按绑定名（首字母小写）从 query 装配，Limit 自动转 int
 gbl.Get("/orders", func(q OrderQuery) []Order {
     return loadOrders(q.Status, q.Limit)
 })

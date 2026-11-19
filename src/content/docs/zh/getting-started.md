@@ -118,27 +118,25 @@ curl -X POST http://localhost:9801/user \
 
 注意第三个请求：你没有任何解码代码，`User` 自动从 body 装配，返回的 `*User` 自动变成 JSON，`Content-Type` 在注册时就根据返回类型选好了。
 
-## 可选配置：application.ini
+## 可选配置：Configure
 
-不给配置文件就全用默认。需要改端口、开 TLS 或文件日志时，在**工作目录**放一个 `application.ini`：
+不配置就全用默认。需要改端口、开 TLS 或调超时时，在 `Run` 之前用代码覆盖：
 
-```ini
-[gbl]
-name = myapp
-port = 9802
+```go
+gbl.Configure(func(c *gbl.Config) {
+    c.Name = "myapp"
+    c.Port = "9802"
 
-# certFile 与 keyFile 同时给出则启用 HTTPS
-certFile = server.crt
-keyFile  = server.key
+    // CertFile 与 KeyFile 同时给出则启用 HTTPS
+    c.CertFile = "server.crt"
+    c.KeyFile  = "server.key"
 
-readTimeout  = 10s
-writeTimeout = 10s
-
-# 按级别拆分日志文件：info.log / warn.log / error.log
-logDir = ./logs
+    c.ReadTimeout  = 10 * time.Second
+    c.WriteTimeout = 10 * time.Second
+})
 ```
 
-键名 `camelCase` 与 `kebab-case` 都接受（`readTimeout` 等价于 `read-timeout`）。完整键表见[配置](/docs/configuration)。
+内核不读配置文件，配置全在代码里。完整字段表见[配置](/docs/configuration)。
 
 ## 一个请求的完整旅程
 

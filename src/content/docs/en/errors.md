@@ -1,6 +1,6 @@
 # Errors & Panics
 
-GBL's error policy is deliberately strict: **unexpected panics never echo internal details** (the cause goes to the log, the client only gets a generic `500`). Exactly two things reach the client verbatim — an explicit `Abort`, and (if you installed one) your `PanicProcessor`.
+GBL's error policy splits echo rights by **who authored the message**: **developer-authored text reaches the client verbatim** — an explicit `Abort`, (if you installed one) your `PanicProcessor`, and the error text returned by `Validate`; **framework-assembled internals never do** — panic causes and binding failures (parameter names, Go type strings, strconv detail) go to the server log only, with a generic `500` / `400` on the wire. Request-parse errors (bad Content-Type, oversize body) describe the client's own request framing and carry no internal identifiers, so they are echoed.
 
 ## What can reach the client
 
@@ -8,8 +8,9 @@ GBL's error policy is deliberately strict: **unexpected panics never echo intern
 |---|---|
 | `gbl.Abort(status, msg)` | your status + msg (plain text) |
 | `c.AbortWithStatus` / `c.AbortWithStatusJSON` | your status / JSON body |
-| binding failure (missing field, conversion error, malformed body) | 400 + the specific reason (the client's own input problem) |
-| validation failure (`Validatable`) | generic 400 (details only in the log) |
+| validation failure (`Validatable`) | 400 + the `Validate` error text verbatim (you wrote the message, so you own what it discloses) |
+| request-parse failure (bad Content-Type, oversize body) | 400 / 413 + the reason (the client's own request framing) |
+| binding failure (missing JSON member, conversion error) | generic 400 (reflection detail — parameter names, Go types — only in the log) |
 | return-value serialization failure | 500 + fixed text `response serialization failed` |
 | any other panic | generic 500 `Internal Server Error` (stack goes to the log) |
 | a registered `PanicProcessor` | **it renders every recovered value above** |
@@ -57,7 +58,7 @@ The returned body can be any renderable value; rendering rules and Content-Type 
 |---|---|---|
 | `error` | `err.Error()` plain text | text/plain |
 | struct / map | JSON | application/json |
-| array / slice | JSON | text/plain |
+| array / slice | JSON | application/json |
 | `string` | verbatim | text/plain |
 | pointer / interface | unwrapped one level, then the rules above | follows the unwrapped result |
 | scalars | formatted text | text/plain |

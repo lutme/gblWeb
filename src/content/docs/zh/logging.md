@@ -1,6 +1,6 @@
 # 日志
 
-所有内部消息（恢复的 panic、校验失败、访问日志行、启动事件）都经引擎 `Logger` 路由，故目的地/格式由应用决定。
+所有内部消息（恢复的 panic、绑定失败、访问日志行、启动事件）都经引擎 `Logger` 路由，故目的地/格式由应用决定。
 
 ## Logger 接口
 
@@ -93,34 +93,18 @@ gbl.Use(gbl.AccessLog)
 
 它放在响应阶段读结果——`c.Next()` 之后状态码与大小已确定。更丰富的可观测性（metrics、tracing）同样是中间件：用 `c.StatusCode()`、`c.Size()` 与环绕 `c.Next()` 的计时自己实现，框架不内置任何传输依赖。
 
-## 文件日志（配置驱动）
+## 文件日志（集成示例）
 
-在 `application.ini` 的 `[gbl]` 段配置目的地：
+框架本身**只打印控制台**，不内置文件日志。要写文件，装一个指向文件的 `Logger` 即可：
 
-```ini
-[gbl]
-logDir  = ./logs      # 自动创建 info.log / warn.log / error.log
-# logFile = ./app.log  # 所有级别合并进一个文件（优先级最低）
-# infoLog  = ./logs/info.log   # 逐级显式路径（优先级最高）
-# warnLog  = ./logs/warn.log
-# errorLog = ./logs/error.log
+```go
+f, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+if err != nil {
+    log.Fatal(err)
+}
+gbl.SetLogger(gbl.NewStdLogger(log.New(f, "", log.LstdFlags)))
 ```
 
-每个级别的目的地按优先级选择：**逐级显式路径 > logDir/<级别>.log > logFile**。规则：
-
-- 配置了文件的级别**同时**输出到 stdout 和文件（镜像，不是二选一）；
-- 多个级别指向同一路径时共享一个文件句柄；
-- 没配置文件的级别仍打印到 stdout，控制台输出保持完整；
-- 三个键全空 = 关闭文件日志，只走控制台；
-- 目录不存在会自动创建；
-- 所有打开的文件在 `Shutdown` 时关闭。
-
-### 自定义 Logger 优先
-
-装了 `SetLogger` 时，内置文件路由**不会覆盖你的 sink**——框架打印一条启动 Warn（`ini log keys ignored because a custom Logger is installed`）后就此让路。文件目的地与你的结构化后端只能选一个主导。
-
-### 日志目的地坏掉时
-
-配置了文件日志却打不开（路径错误、无权限、磁盘满）：启动失败，且原因三路兜底——控制台一行、可执行文件旁的 `gbl-start-error.log`、panic 值。详见[服务生命周期](/docs/lifecycle)。
+想控制台与文件双写，用 `io.MultiWriter(os.Stdout, f)`。日志轮转、按级别分文件等更完整的能力，交给 zap/slog 适配器或未来的 gbl-boot 集成层——内核不内置文件日志，也不写任何兜底文件。
 
 下一章：[跨域 CORS](/docs/cors)。

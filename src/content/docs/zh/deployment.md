@@ -74,23 +74,24 @@ gbl.Get("/search", func(q SearchQuery) string { ... })
 
 ## TLS
 
-`application.ini` 同时给出 `certFile` 与 `keyFile` 即启用 HTTPS：
+`Configure` 同时给出 `CertFile` 与 `KeyFile` 即启用 HTTPS：
 
-```ini
-[gbl]
-port     = 443
-certFile = /etc/tls/server.crt
-keyFile  = /etc/tls/server.key
+```go
+gbl.Configure(func(c *gbl.Config) {
+    c.Port     = "443"
+    c.CertFile = "/etc/tls/server.crt"
+    c.KeyFile  = "/etc/tls/server.key"
+})
 ```
 
-只给其中一个不启用。证书路径相对工作目录解析，容器里建议用绝对路径。
+只给其中一个不启用。证书路径相对**进程启动时的工作目录**解析，不是可执行文件所在目录；容器里建议用绝对路径。
 
 ## 容器化清单
 
 - **信号**：`Run` 自带 SIGTERM 优雅停机（5 秒窗口），Kubernetes `terminationGracePeriodSeconds` 建议 ≥ 10；
-- **端口**：ini 的 `port` 或默认 9801，与 Service/容器端口对齐；
-- **日志**：容器推荐只走控制台（不配文件键），由采集器收 stdout；需要文件时用 `logDir` 挂卷；
-- **配置**：`application.ini` 放工作目录，或用 ConfigMap 挂载到工作目录；
+- **端口**：`Configure` 的 `Port` 或默认 9801，与 Service/容器端口对齐；
+- **日志**：默认只走控制台，由采集器收 stdout；需要文件时经 `SetLogger` 指向挂卷路径（见[日志](/docs/logging)）；
+- **配置**：内核不读配置文件——环境变量/ConfigMap 由应用自行解析后调 `Configure`；
 - **源码**：按上文三种解法之一处理参数名约束。
 
 ## 版本显示

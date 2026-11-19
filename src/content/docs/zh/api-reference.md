@@ -109,9 +109,8 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `ReadIni` | `func ReadIni(path string) (map[string]map[string]string, error)` | 解析任意 INI 文件 |
-| `IniBySection` | `func IniBySection(section string) (map[string]string, bool)` | 读 application.ini 快照整段（副本） |
-| `IniBySectionAndKey` | `func IniBySectionAndKey(section, key string) (string, bool)` | 读快照单值 |
+| `Configure` | `func Configure(fn func(*Config))` | 代码覆盖配置；fn 拿到已填默认值的 Config；Run 前调用；nil 空操作 |
+| `Config` | 结构体（8 个导出字段） | Name/Port/CertFile/KeyFile + 四个超时；TLS 由双路径自动推导 |
 
 详见[配置](/docs/configuration)。
 
@@ -124,6 +123,6 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | readTimeout / readHeaderTimeout / writeTimeout / idleTimeout | 10s / 5s / 10s / 60s |
 | 总 body / 内存阈值 / 单文件 | 5 MiB / 2 MiB / 1 MiB |
 | 信号停机窗口 | 5s |
-| TLS | 关闭（certFile+keyFile 同时给出才启用） |
+| TLS | 关闭（CertFile+KeyFile 同时给出才启用） |
 | CORS | 关闭 |
-| 文件日志 | 关闭（仅控制台） |
+| 日志输出 | 仅控制台（文件日志经 `SetLogger` 集成） |

@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import CodeBlock from '@/components/CodeBlock.vue'
-import { installCode, helloCode, runCode, iniCode } from '@/content/samples'
+import { installCode, helloCode, runCode, configureCode } from '@/content/samples'
 import { revealOnScroll } from '@/lib/motion'
 
 const { t } = useI18n()
@@ -41,15 +41,15 @@ onMounted(() => {
         </article>
       </div>
 
-      <div class="ini-row reveal">
-        <div class="ini-copy">
-          <h3><Icon icon="lucide:settings-2" width="18" />{{ t('quickstart.iniTitle') }}</h3>
-          <p>{{ t('quickstart.iniNote') }}</p>
-          <router-link to="/docs/configuration" class="btn btn-ghost ini-cta">
+      <div class="config-row reveal">
+        <div class="config-copy">
+          <h3><Icon icon="lucide:settings-2" width="18" />{{ t('quickstart.configureTitle') }}</h3>
+          <p>{{ t('quickstart.configureNote') }}</p>
+          <router-link to="/docs/configuration" class="btn btn-ghost config-cta">
             <Icon icon="lucide:arrow-right" width="16" />{{ t('quickstart.docsCta') }}
           </router-link>
         </div>
-        <CodeBlock :code="iniCode" lang="ini" title="application.ini" />
+        <CodeBlock :code="configureCode" lang="go" title="main.go" />
       </div>
     </div>
   </section>
@@ -108,7 +108,7 @@ onMounted(() => {
   color: var(--text-muted);
   min-height: 44px;
 }
-.ini-row {
+.config-row {
   margin-top: 22px;
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -119,19 +119,19 @@ onMounted(() => {
   border: 1px dashed rgba(61, 139, 255, 0.35);
   background: rgba(8, 18, 38, 0.5);
 }
-.ini-copy h3 {
+.config-copy h3 {
   display: flex;
   align-items: center;
   gap: 9px;
   font-size: calc(18px * var(--site-type, 1));
   color: var(--blue-pale);
 }
-.ini-copy p {
+.config-copy p {
   margin-top: 10px;
   color: var(--text-muted);
   font-size: calc(14.5px * var(--site-type, 1));
 }
-.ini-cta {
+.config-cta {
   margin-top: 18px;
 }
 @media (max-width: 1080px) {
@@ -141,7 +141,7 @@ onMounted(() => {
   .step-desc {
     min-height: 0;
   }
-  .ini-row {
+  .config-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }

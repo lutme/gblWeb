@@ -122,9 +122,9 @@ export default {
     step2: 'Write',
     step2Desc: 'Register routes and write business functions. Any signature, automatic binding.',
     step3: 'Run',
-    step3Desc: 'Listens on :9801 by default; Ctrl+C shuts down gracefully. application.ini is optional.',
-    iniTitle: 'application.ini (optional)',
-    iniNote: 'No file means all defaults; both camelCase and kebab-case keys are accepted.',
+    step3Desc: 'Listens on :9801 by default; Ctrl+C shuts down gracefully. Configuration lives in code.',
+    configureTitle: 'Configure (optional)',
+    configureNote: 'The kernel reads no config file: defaults work out of the box; override them in code before Run.',
     docsCta: 'Read the full getting-started guide',
   },
   examples: {

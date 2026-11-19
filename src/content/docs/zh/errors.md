@@ -1,6 +1,6 @@
 # 错误与 panic
 
-GBL 的错误策略刻意严格：**非预期 panic 永不回显内部信息**（原因进日志，客户端只拿通用 `500`）。只有两样东西会原样到达客户端——显式的 `Abort`，以及（若你装了）你的 `PanicProcessor`。
+GBL 的错误策略按**消息是谁写的**划分回显权：**开发者写的消息原样到达客户端**——显式的 `Abort`、（若你装了）你的 `PanicProcessor`、`Validate` 返回的错误文本；**框架从内部拼出的消息永不回显**——非预期 panic 的原因、绑定失败的反射细节只进服务端日志，客户端只拿通用 `500` / `400`。请求解析错误（坏 Content-Type、body 超限）描述的是客户端自己的请求帧，不含内部标识，故原样回显。
 
 ## 什么能到达客户端
 
@@ -8,8 +8,9 @@ GBL 的错误策略刻意严格：**非预期 panic 永不回显内部信息**�
 |---|---|
 | `gbl.Abort(status, msg)` | 你给的 status + msg（纯文本） |
 | `c.AbortWithStatus` / `c.AbortWithStatusJSON` | 你给的状态 / JSON body |
-| 装配失败（缺字段、转换错误、非法 body） | 400 + 具体原因（客户端自己的输入问题） |
-| 校验失败（`Validatable`） | 通用 400（细节只进日志） |
+| 校验失败（`Validatable`） | 400 + `Validate` 错误文本原样回显（消息是你写的，披露责任在你） |
+| 请求解析失败（坏 Content-Type、body 超限） | 400 / 413 + 原因（客户端自己的请求帧问题） |
+| 装配失败（缺 JSON 成员、类型转换错误） | 通用 400（参数名、Go 类型等反射细节只进日志） |
 | 返回值序列化失败 | 500 + 固定文本 `response serialization failed` |
 | 其他任何 panic | 通用 500 `Internal Server Error`（堆栈进日志） |
 | 注册了 `PanicProcessor` | **以上所有被恢复的值都归它渲染** |
@@ -57,7 +58,7 @@ gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {
 |---|---|---|
 | `error` | `err.Error()` 纯文本 | text/plain |
 | 结构体 / map | JSON | application/json |
-| 数组 / 切片 | JSON | text/plain |
+| 数组 / 切片 | JSON | application/json |
 | `string` | 原样 | text/plain |
 | 指针 / 接口 | 解一层后按上述规则 | 随解包结果 |
 | 标量 | 格式化文本 | text/plain |

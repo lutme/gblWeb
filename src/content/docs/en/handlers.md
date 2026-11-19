@@ -41,7 +41,7 @@ For each business parameter:
 - **JSON mode**: `application/json` (including the `+json` suffix, e.g. `application/vnd.api+json`) with a non-blank body → values come only from the JSON body; form/query is never consulted.
 - **form/query mode**: everything else (including JSON with an empty body) → values come from form/query. Under `POST`/`PUT`/`PATCH`, both body fields and same-named query values can bind, with **the body winning**.
 
-Within either source, name matching is **exact first, then case-insensitive** (aligned with `encoding/json` field matching).
+gbl's own name lookups are **exact**: a path/form/query key, or a top-level JSON member, is matched verbatim with no case folding. (Struct fields inside a JSON body are decoded by `encoding/json`, which matches field names case-insensitively — the one exception.)
 
 ```go
 // GET /user/42?verbose=true
@@ -95,7 +95,7 @@ gbl.Post("/user", func(u User, verbose bool) string {
 })
 ```
 
-A missing top-level member is a request-time **400** (the error names the missing field), not a silent zero value. A non-object body (e.g. an array) is also a 400.
+A missing top-level member is a request-time **400** (generic text; which member is missing stays in the server log), not a silent zero value. A non-object body (e.g. an array) is also a 400.
 
 ### Rule 3: path parameters still win
 
@@ -111,25 +111,36 @@ gbl.Post("/user/:id", func(id int, verbose bool) string {
 
 ## Struct binding in form/query mode
 
-Struct parameters in form/query mode are filled **by field name** (case-insensitive, no struct tags needed):
+Struct parameters are filled **by bind name** in form/query mode. Bind names are decided at registration and cached; request keys are **matched exactly, byte-for-byte** — no case folding, and the request data itself is never transformed:
 
-- each field checks for a same-named path parameter first, then form/query values;
-- nested structs recurse with the same rules;
-- a `*struct` is allocated (zero value) even without a same-named source, so its fields can bind one by one.
+- **with a json tag**: the tag name is used verbatim (`json:"user_name"` binds `user_name`);
+- **without a json tag**: the field name with its first letter lowercased (`Name` → `name`, `Id` → `id`), so a lowercase request key binds to an exported field with no tag at all;
+- `json:"-"` drops the field entirely; `json:"-,"` names the field literally `-`.
+
+> **The camelCase convention**: name a field `Id`, not `ID` — only the first letter is lowercased, so `ID` derives `iD`, and a request key `id` will not bind.
+
+Per-field precedence: a same-named path parameter first, then form/query values; nested structs recurse with the same rules; a `*struct` is allocated (zero value) even without a same-named source, so its fields can bind one by one.
 
 ```go
 type User struct {
-    ID   int
-    Name string
+    Id   int    // no tag → bind name id
+    Name string // no tag → bind name name
 }
 
-// GET /user/42?name=ada → u.ID == 42 (from :id), u.Name == "ada"
+// GET /user/42?name=ada → u.Id == 42 (from :id), u.Name == "ada"
 gbl.Get("/user/:id", func(u User) string {
-    return fmt.Sprintf("%d %s", u.ID, u.Name)
+    return fmt.Sprintf("%d %s", u.Id, u.Name)
 })
+
+type Tagged struct {
+    Name string `json:"user_name"` // tagged → bind name user_name verbatim
+}
+
+// POST /t · form body: user_name=ada → t.Name == "ada"
+gbl.Post("/t", func(t Tagged) string { return t.Name })
 ```
 
-> JSON mode does not cross-fill like this — a single struct parameter comes only from the body (Rule 1).
+> JSON mode does not cross-fill like this — a single struct parameter comes only from the body (Rule 1); struct fields inside the body are decoded by `encoding/json` (whose field matching is case-insensitive and honors json tags too).
 
 ## Conversion table for scalars and composites
 
@@ -147,7 +158,7 @@ Form/query values and path parameters are strings; GBL converts them to the targ
 | slices (`[]int` etc.) | consume **repeated values** (`?tag=a&tag=b`); missing → empty slice |
 | `[]byte` | special: raw bytes of the first value, not repeated values |
 | arrays (`[3]int`) | the number of repeated values **must equal the array length exactly**, otherwise 400 |
-| structs | recursive by field name (see above) |
+| structs | recursive by bind name (see above) |
 
 ```go
 // GET /filter?tag=go&tag=web&limit=10&ratio=0.5&debug=true
@@ -167,7 +178,7 @@ gbl.Get("/maybe", func(p *int) string {
 })
 ```
 
-Scalar parameters take the **first value**; use a slice or array to consume repeated values. A conversion failure (e.g. `limit=abc`) → 400, with the parameter name and reason in the error message.
+Scalar parameters take the **first value**; use a slice or array to consume repeated values. A conversion failure (e.g. `limit=abc`) → a generic 400; the parameter name and reason go only to the server log.
 
 ## Automatic return-value serialization
 
@@ -186,7 +197,7 @@ The Content-Type is chosen at **registration time** from the static return type:
 gbl.Get("/text", func() string { return "plain" })
 gbl.Get("/num", func() int { return 42 })                       // "42"
 gbl.Get("/json", func() map[string]int { return map[string]int{"n": 3} })
-gbl.Get("/obj", func() *User { return &User{ID: 1} })           // {"ID":1,...}
+gbl.Get("/obj", func() *User { return &User{Id: 1} })           // {"Id":1,...}
 gbl.Get("/none", func() {})                                     // empty body
 gbl.Get("/nil", func() *User { return nil })                    // empty body
 ```
@@ -222,9 +233,9 @@ Unnamed parameters (`func(string) string`) receive placeholder names `arg0`, `ar
 
 | Failure | Status | What the client sees |
 |---|---|---|
-| missing parameter (multi-parameter JSON) / conversion failure / malformed body | 400 | the specific error (the client's own input problem, safe to echo) |
+| missing parameter (multi-parameter JSON) / conversion failure | 400 | generic `Bad Request` (reflection detail — parameter names, Go types — goes only to the log) |
 | body over the total limit | 413 | `Request Entity Too Large` |
-| validation failure (`Validatable`) | 400 | generic `Bad Request` (rule details go only to the log) |
+| validation failure (`Validatable`) | 400 | the `Validate` error text verbatim (you wrote the message, so you own what it discloses) |
 | return-value serialization failure | 500 | fixed text (server-side problem, nothing leaked) |
 
 ## Full example: an orders API
@@ -236,7 +247,7 @@ type OrderQuery struct {
 }
 
 // GET /orders?status=paid&limit=20
-// The struct binds from query by field name; Limit converts to int automatically
+// The struct binds from query by bind name (first letter lowercased); Limit converts to int automatically
 gbl.Get("/orders", func(q OrderQuery) []Order {
     return loadOrders(q.Status, q.Limit)
 })
