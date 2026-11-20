@@ -46,7 +46,6 @@ All other fields are unexported; the response writer is only available by declar
 | `Next()` | execute the rest of the chain (the handler at the end) |
 | `PathParam(name) string` | read a matched path parameter by name (for middleware; business handlers should bind by name) |
 | `Set(key, value)` / `Get(key) (any, bool)` | request-scoped values (typed convenience: `Value` / `MustValue`, see [Request-scoped Values](/docs/values)) |
-| `Status(code)` | record the response status (flushed to the wire only on first write) |
 | `Result() any` | the handler's return value as `any` (valid after `Next()`); boxed only on first read |
 | `IsWritten() bool` | whether the body has been committed |
 | `StatusCode() int` | the status to be / already sent (default 200) |
