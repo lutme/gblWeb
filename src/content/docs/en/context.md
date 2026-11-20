@@ -1,6 +1,6 @@
 # Context
 
-`*Context` runs through the entire middleware chain and is injected as a parameter when a handler declares it. It carries the request, the matched path parameters, and a key/value bag for passing data between the chain and the handler. Business responses are serialized automatically from the handler's return value; middleware records status with `c.Status` and rejects requests with the `Abort` family.
+`*Context` runs through the entire middleware chain and is injected as a parameter when a handler declares it. It carries the request, the matched path parameters, and a key/value bag for passing data between the chain and the handler. Business responses are serialized automatically from the handler's return value (status 200); middleware rejects requests with the `Abort` family.
 
 ## Pooled: valid only within this request
 
@@ -60,7 +60,7 @@ All other fields are unexported; the response writer is only available by declar
 
 The stashed body is committed only after the whole chain unwinds, so at the point `c.Next()` returns you can already read the **final** results:
 
-- `StatusCode()`: the recorded status; 200 if nobody recorded one. Middleware calling `c.Status(201)` before `Next()` makes the final response 201.
+- `StatusCode()`: the status that will be, or was, sent; 200 if nothing set one. The stashed body is committed only after the chain unwinds, so an access-log or metrics middleware reads the final status right at `c.Next()`'s return point.
 - `Size()`: bytes already written; before writing, it returns the stashed result's length — matching what the client will actually receive.
 - `Result()`: the handler's raw return value. Not reading it means no boxing allocation.
 - `IsWritten()`: true once the handler (via an injected writer) or the `Abort` family has written a body; the framework then never writes the stashed result.
@@ -75,15 +75,14 @@ gbl.Use(func(c *gbl.Context) {
 
 ### Writing responses
 
-The normal path needs no manual response writing — the handler's return value is serialized automatically (see [Handlers & Parameter Binding](/docs/handlers)). The Context offers only two kinds of write:
+The normal path needs no manual response writing — the handler's return value is serialized automatically (see [Handlers & Parameter Binding](/docs/handlers)). The only active writes on the Context are the `Abort` family:
 
 ```go
-c.Status(http.StatusAccepted)                      // record status only; the framework still writes the body
 c.AbortWithStatusString(401, "unauthorized")       // reject with plain text and abort the chain
 c.AbortWithStatusJSON(403, map[string]string{"error": "forbidden"}) // reject with JSON and abort
 ```
 
-`Status` matches `net/http` — flushed to the wire on first write, and recorded only once. An `AbortWithStatusJSON` serialization failure is a server-side error: aborted with a generic 500, no details echoed. For full control of the response, declare an `http.ResponseWriter` parameter in the handler.
+Success responses always carry status 200 — to pair a custom status with a success body, declare an `http.ResponseWriter` parameter in the handler and write it yourself. An `AbortWithStatusJSON` serialization failure is a server-side error: aborted with a generic 500, no details echoed.
 
 ## Scenario examples
 

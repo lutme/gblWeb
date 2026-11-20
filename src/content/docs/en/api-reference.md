@@ -39,7 +39,6 @@ See [Lifecycle](/docs/lifecycle), [Middleware](/docs/middleware).
 | `Context.AbortWithStatusString` / `AbortWithStatusJSON` | reject with plain text / JSON and abort |
 | `Context.PathParam` | read a path parameter by name (for middleware) |
 | `Context.Set` / `Get` | request-scoped key/value |
-| `Context.Status` | record the response status (the body comes from the serialized return value) |
 | `Context.Result` / `IsWritten` / `StatusCode` / `Size` | response-phase observation |
 | `HandlerFunc` | `type HandlerFunc func(c *Context)`, the middleware type |
 | `RouteGroup` | group interface: GroupUse + all verbs, each returning itself for chaining |

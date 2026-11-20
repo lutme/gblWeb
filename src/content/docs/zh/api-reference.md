@@ -39,7 +39,6 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | `Context.AbortWithStatusString` / `AbortWithStatusJSON` | 以纯文本 / JSON 拒绝并中断 |
 | `Context.PathParam` | 按名取路径参数（中间件用） |
 | `Context.Set` / `Get` | 请求级 key/value |
-| `Context.Status` | 记录响应状态（body 由返回值自动序列化写出） |
 | `Context.Result` / `IsWritten` / `StatusCode` / `Size` | 响应阶段观察 |
 | `HandlerFunc` | `type HandlerFunc func(c *Context)`，中间件类型 |
 | `RouteGroup` | 分组接口：GroupUse + 全部动词，均返回自身可链式 |

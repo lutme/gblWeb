@@ -1,6 +1,6 @@
 # Context 详解
 
-`*Context` 贯穿整条中间件链，当 handler 声明它时会被作为参数注入。它携带请求、匹配到的路径参数，以及一个用于在链路与 handler 之间传递数据的 key/value 袋子。业务响应由 handler 返回值自动序列化写出；中间件用 `c.Status` 记录状态，用 `Abort` 系列拒绝请求。
+`*Context` 贯穿整条中间件链，当 handler 声明它时会被作为参数注入。它携带请求、匹配到的路径参数，以及一个用于在链路与 handler 之间传递数据的 key/value 袋子。业务响应由 handler 返回值自动序列化写出（状态码 200）；中间件用 `Abort` 系列拒绝请求。
 
 ## 池化：只在本次请求内有效
 
@@ -60,7 +60,7 @@ c.Request // *http.Request —— 原始入站请求
 
 暂存 body 在整条链回溯完才提交，所以 `c.Next()` 返回点就能读到**最终**结果：
 
-- `StatusCode()`：已记录的状态码；没人记录过就是 200。中间件在 `Next()` 前调 `c.Status(201)`，最终响应就是 201。
+- `StatusCode()`：将要/已经发送的状态码；没人设置过就是 200。暂存 body 在链回溯完才提交，所以访问日志/指标中间件在 `c.Next()` 返回点读到的就是最终状态。
 - `Size()`：已写出的字节数；还没写出时返回暂存结果的长度——与客户端实际将收到的一致。
 - `Result()`：handler 的原始返回值。不读它就不产生装箱分配。
 - `IsWritten()`：handler（注入的 writer）或 `Abort` 系列已经写过 body 时为 true，此时框架不会再写暂存结果。
@@ -75,15 +75,14 @@ gbl.Use(func(c *gbl.Context) {
 
 ### 写响应
 
-正常路径不需要手写响应——handler 的返回值由框架自动序列化（见 [Handler 与参数装配](/docs/handlers)）。Context 上只有两类写操作：
+正常路径不需要手写响应——handler 的返回值由框架自动序列化（见 [Handler 与参数装配](/docs/handlers)）。Context 上的主动写操作只有 `Abort` 系列：
 
 ```go
-c.Status(http.StatusAccepted)                      // 只记录状态，body 仍由框架写
 c.AbortWithStatusString(401, "unauthorized")       // 纯文本拒绝并中断链
 c.AbortWithStatusJSON(403, map[string]string{"error": "forbidden"}) // JSON 拒绝并中断链
 ```
 
-`Status` 与 `net/http` 一致——首次写入时才落到线上，且只记录一次。`AbortWithStatusJSON` 序列化失败是服务端错误：以通用 500 中止，不回显细节。想完全接管响应，在 handler 里声明 `http.ResponseWriter` 参数。
+成功响应的状态码固定为 200——想给成功 body 配自定义状态码，在 handler 里声明 `http.ResponseWriter` 参数自己写。`AbortWithStatusJSON` 序列化失败是服务端错误：以通用 500 中止，不回显细节。
 
 ## 场景示例
 
