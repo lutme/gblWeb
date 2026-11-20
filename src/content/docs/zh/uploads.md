@@ -35,13 +35,15 @@ gbl.Post("/gallery", func(photos []*multipart.FileHeader) string {
 `FileHeader.Open()` 打开文件（内存或临时文件，取决于大小阈值）：
 
 ```go
-gbl.Post("/avatar", func(avatar *multipart.FileHeader) string {
+gbl.Post("/avatar", func(c *gbl.Context, avatar *multipart.FileHeader) string {
     if avatar == nil {
-        gbl.Abort(http.StatusBadRequest, "avatar is required")
+        c.AbortWithStatusString(http.StatusBadRequest, "avatar is required")
+        return ""
     }
     f, err := avatar.Open()
     if err != nil {
-        gbl.Abort(http.StatusBadRequest, "cannot read upload")
+        c.AbortWithStatusString(http.StatusBadRequest, "cannot read upload")
+        return ""
     }
     defer f.Close()
     data, _ := io.ReadAll(f)

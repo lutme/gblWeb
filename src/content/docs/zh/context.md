@@ -1,6 +1,6 @@
 # Context 详解
 
-`*Context` 贯穿整条中间件链，当 handler 声明它时会被作为参数注入。它携带请求、匹配到的路径参数，以及一个用于在链路与 handler 之间传递数据的 key/value 袋子；响应经 `c.JSON` / `c.String` / `c.Status` 写出。
+`*Context` 贯穿整条中间件链，当 handler 声明它时会被作为参数注入。它携带请求、匹配到的路径参数，以及一个用于在链路与 handler 之间传递数据的 key/value 袋子。业务响应由 handler 返回值自动序列化写出；中间件用 `c.Status` 记录状态，用 `Abort` 系列拒绝请求。
 
 ## 池化：只在本次请求内有效
 
@@ -46,8 +46,6 @@ c.Request // *http.Request —— 原始入站请求
 | `Next()` | 执行链上剩余部分（到末端即 handler） |
 | `PathParam(name) string` | 按名字取匹配到的路径参数（供中间件用；业务 handler 请按名绑定） |
 | `Set(key, value)` / `Get(key) (any, bool)` | 请求级取值（类型化便利：`Value` / `MustValue`，见[请求级取值](/docs/values)） |
-| `JSON(status, value)` | 以给定状态写 JSON body |
-| `String(status, body)` | 写纯文本 body |
 | `Status(code)` | 记录响应状态（首次写入时才真正落到线上） |
 | `Result() any` | handler 返回值的 `any` 形态（`Next()` 之后有效）；首次读取时才装箱 |
 | `IsWritten() bool` | body 是否已提交 |
@@ -55,8 +53,8 @@ c.Request // *http.Request —— 原始入站请求
 | `Size() int` | 有效响应体长度 |
 | `Aborted() bool` | 链路是否已中断 |
 | `Abort()` | 中断链路，不写任何内容 |
-| `AbortWithStatus(status)` | 以某状态拒绝，无 body |
-| `AbortWithStatusJSON(status, value)` | 以 JSON body 拒绝 |
+| `AbortWithStatusString(status, body)` | 以纯文本 body 拒绝并中断 |
+| `AbortWithStatusJSON(status, body)` | 以 JSON body 拒绝并中断 |
 
 ### 观察类方法的语义
 
@@ -65,7 +63,7 @@ c.Request // *http.Request —— 原始入站请求
 - `StatusCode()`：已记录的状态码；没人记录过就是 200。中间件在 `Next()` 前调 `c.Status(201)`，最终响应就是 201。
 - `Size()`：已写出的字节数；还没写出时返回暂存结果的长度——与客户端实际将收到的一致。
 - `Result()`：handler 的原始返回值。不读它就不产生装箱分配。
-- `IsWritten()`：handler 或中间件已经写过 body 时为 true，此时框架不会再写暂存结果。
+- `IsWritten()`：handler（注入的 writer）或 `Abort` 系列已经写过 body 时为 true，此时框架不会再写暂存结果。
 
 ```go
 gbl.Use(func(c *gbl.Context) {
@@ -75,15 +73,17 @@ gbl.Use(func(c *gbl.Context) {
 })
 ```
 
-### 写响应的方法
+### 写响应
+
+正常路径不需要手写响应——handler 的返回值由框架自动序列化（见 [Handler 与参数装配](/docs/handlers)）。Context 上只有两类写操作：
 
 ```go
-c.String(http.StatusOK, "plain")          // text/plain; charset=utf-8
-c.JSON(http.StatusCreated, obj)           // application/json; charset=utf-8
-c.Status(http.StatusAccepted)             // 只记录状态，body 仍由框架写
+c.Status(http.StatusAccepted)                      // 只记录状态，body 仍由框架写
+c.AbortWithStatusString(401, "unauthorized")       // 纯文本拒绝并中断链
+c.AbortWithStatusJSON(403, map[string]string{"error": "forbidden"}) // JSON 拒绝并中断链
 ```
 
-`c.JSON` 序列化失败是服务端错误：以通用 500 中止，不回显细节。`Status` 与 `net/http` 一致——首次写入时才落到线上，且只记录一次。
+`Status` 与 `net/http` 一致——首次写入时才落到线上，且只记录一次。`AbortWithStatusJSON` 序列化失败是服务端错误：以通用 500 中止，不回显细节。想完全接管响应，在 handler 里声明 `http.ResponseWriter` 参数。
 
 ## 场景示例
 
@@ -95,7 +95,7 @@ c.Status(http.StatusAccepted)             // 只记录状态，body 仍由框架
 gbl.Use(func(c *gbl.Context) {
     uid, ok := parseToken(c.Request.Header.Get("Authorization"))
     if !ok {
-        c.AbortWithStatus(http.StatusUnauthorized)
+        c.AbortWithStatusString(http.StatusUnauthorized, "unauthorized")
         return
     }
     c.Set("uid", uid)
@@ -111,7 +111,7 @@ gbl.Get("/orders", func(c *gbl.Context) []Order {
 })
 ```
 
-### 场景二：接口监控与 body 改写
+### 场景二：接口监控
 
 handler 跑完后，只有 Context 能拿到暂存返回值与有效状态/大小；注入的 `http.ResponseWriter` 只能写，读不到这些。
 
@@ -119,8 +119,8 @@ handler 跑完后，只有 Context 能拿到暂存返回值与有效状态/大�
 gbl.Use(func(c *gbl.Context) {
     c.Next()
     metrics.Observe(c.StatusCode(), c.Size())
-    if res, ok := c.Result().(string); ok && !c.IsWritten() {
-        c.String(http.StatusOK, strings.ToUpper(res)) // 覆盖默认 body
+    if c.Aborted() {
+        log.Printf("请求被中断，状态码 %d", c.StatusCode())
     }
 })
 ```

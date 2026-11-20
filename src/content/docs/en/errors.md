@@ -1,13 +1,13 @@
 # Errors & Panics
 
-GBL's error policy splits echo rights by **who authored the message**: **developer-authored text reaches the client verbatim** — an explicit `Abort`, (if you installed one) your `PanicProcessor`, and the error text returned by `Validate`; **framework-assembled internals never do** — panic causes and binding failures (parameter names, Go type strings, strconv detail) go to the server log only, with a generic `500` / `400` on the wire. Request-parse errors (bad Content-Type, oversize body) describe the client's own request framing and carry no internal identifiers, so they are echoed.
+GBL's error policy splits echo rights by **who authored the message**: **developer-authored text reaches the client verbatim** — an explicit abort (the `Abort` family), (if you installed one) your `PanicProcessor`, and the error text returned by `Validate`; **framework-assembled internals never do** — panic causes and binding failures (parameter names, Go type strings, strconv detail) go to the server log only, with a generic `500` / `400` on the wire. Request-parse errors (bad Content-Type, oversize body, empty JSON body) describe the client's own request framing and carry no internal identifiers, so they are echoed.
 
 ## What can reach the client
 
 | Source | What the client sees |
 |---|---|
-| `gbl.Abort(status, msg)` | your status + msg (plain text) |
-| `c.AbortWithStatus` / `c.AbortWithStatusJSON` | your status / JSON body |
+| `c.AbortWithStatusString(status, body)` | your status + plain-text body |
+| `c.AbortWithStatusJSON(status, body)` | your status + JSON body |
 | validation failure (`Validatable`) | 400 + the `Validate` error text verbatim (you wrote the message, so you own what it discloses) |
 | request-parse failure (bad Content-Type, oversize body) | 400 / 413 + the reason (the client's own request framing) |
 | binding failure (missing JSON member, conversion error) | generic 400 (reflection detail — parameter names, Go types — only in the log) |
@@ -15,22 +15,24 @@ GBL's error policy splits echo rights by **who authored the message**: **develop
 | any other panic | generic 500 `Internal Server Error` (stack goes to the log) |
 | a registered `PanicProcessor` | **it renders every recovered value above** |
 
-## Abort(status, msg)
+## The Abort family: explicit aborts
 
 ```go
 gbl.Get("/admin", func(c *gbl.Context) {
     if !isAdmin(c) {
-        gbl.Abort(http.StatusForbidden, "forbidden") // status+msg really reaches the client
+        c.AbortWithStatusString(http.StatusForbidden, "forbidden") // status+msg really reaches the client
+        return
     }
     // ... a bare panic here would be a generic 500, details hidden
 })
 ```
 
-`Abort` must be called inside a handler or middleware. Unlike a bare `panic`, its message is **guaranteed** to reach the client. The Context also offers variants with status/body:
+The `Abort` methods must be called inside a handler or middleware that declares `*Context`. Unlike a bare `panic`, their message is **guaranteed** to reach the client. Three variants:
 
 ```go
-c.AbortWithStatus(http.StatusUnauthorized)            // no body, status flushed immediately
-c.AbortWithStatusJSON(http.StatusBadRequest, errBody) // JSON body + abort the chain
+c.Abort()                                           // abort the chain only, write nothing
+c.AbortWithStatusString(http.StatusUnauthorized, "unauthorized") // plain-text body + abort the chain
+c.AbortWithStatusJSON(http.StatusBadRequest, errBody)            // JSON body + abort the chain
 ```
 
 ## PanicProcessor: take over all rendering
@@ -67,7 +69,7 @@ The returned body can be any renderable value; rendering rules and Content-Type 
 
 ## A committed body cannot be rewritten
 
-If the body was already written when the panic happened (the handler injected `http.ResponseWriter` and wrote, or middleware already called `c.JSON`), the response cannot be rewritten — the framework only flushes the recorded status code (or the default 200). This is an inherent HTTP limitation, not gbl-specific behavior.
+If the body was already written when the panic happened (the handler injected `http.ResponseWriter` and wrote, or an `Abort` method already wrote the denial), the response cannot be rewritten — the framework only flushes the recorded status code (or the default 200). This is an inherent HTTP limitation, not gbl-specific behavior.
 
 ## How it works internally
 
@@ -92,7 +94,7 @@ func main() {
     })
 
     gbl.Get("/deny", func(c *gbl.Context) {
-        gbl.Abort(http.StatusForbidden, "forbidden") // also rendered by the processor
+        c.AbortWithStatusString(http.StatusForbidden, "forbidden") // also rendered by the processor
     })
 
     gbl.Run()

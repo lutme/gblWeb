@@ -1,6 +1,6 @@
 # Context
 
-`*Context` runs through the entire middleware chain and is injected as a parameter when a handler declares it. It carries the request, the matched path parameters, and a key/value bag for passing data between the chain and the handler; responses are written via `c.JSON` / `c.String` / `c.Status`.
+`*Context` runs through the entire middleware chain and is injected as a parameter when a handler declares it. It carries the request, the matched path parameters, and a key/value bag for passing data between the chain and the handler. Business responses are serialized automatically from the handler's return value; middleware records status with `c.Status` and rejects requests with the `Abort` family.
 
 ## Pooled: valid only within this request
 
@@ -46,8 +46,6 @@ All other fields are unexported; the response writer is only available by declar
 | `Next()` | execute the rest of the chain (the handler at the end) |
 | `PathParam(name) string` | read a matched path parameter by name (for middleware; business handlers should bind by name) |
 | `Set(key, value)` / `Get(key) (any, bool)` | request-scoped values (typed convenience: `Value` / `MustValue`, see [Request-scoped Values](/docs/values)) |
-| `JSON(status, value)` | write a JSON body with the given status |
-| `String(status, body)` | write a plain-text body |
 | `Status(code)` | record the response status (flushed to the wire only on first write) |
 | `Result() any` | the handler's return value as `any` (valid after `Next()`); boxed only on first read |
 | `IsWritten() bool` | whether the body has been committed |
@@ -55,8 +53,8 @@ All other fields are unexported; the response writer is only available by declar
 | `Size() int` | effective response body length |
 | `Aborted() bool` | whether the chain has been aborted |
 | `Abort()` | abort the chain, write nothing |
-| `AbortWithStatus(status)` | reject with a status, no body |
-| `AbortWithStatusJSON(status, value)` | reject with a JSON body |
+| `AbortWithStatusString(status, body)` | reject with a plain-text body and abort |
+| `AbortWithStatusJSON(status, body)` | reject with a JSON body and abort |
 
 ### Semantics of the observation methods
 
@@ -65,7 +63,7 @@ The stashed body is committed only after the whole chain unwinds, so at the poin
 - `StatusCode()`: the recorded status; 200 if nobody recorded one. Middleware calling `c.Status(201)` before `Next()` makes the final response 201.
 - `Size()`: bytes already written; before writing, it returns the stashed result's length — matching what the client will actually receive.
 - `Result()`: the handler's raw return value. Not reading it means no boxing allocation.
-- `IsWritten()`: true once a handler or middleware has written a body; the framework then never writes the stashed result.
+- `IsWritten()`: true once the handler (via an injected writer) or the `Abort` family has written a body; the framework then never writes the stashed result.
 
 ```go
 gbl.Use(func(c *gbl.Context) {
@@ -75,15 +73,17 @@ gbl.Use(func(c *gbl.Context) {
 })
 ```
 
-### Response-writing methods
+### Writing responses
+
+The normal path needs no manual response writing — the handler's return value is serialized automatically (see [Handlers & Parameter Binding](/docs/handlers)). The Context offers only two kinds of write:
 
 ```go
-c.String(http.StatusOK, "plain")          // text/plain; charset=utf-8
-c.JSON(http.StatusCreated, obj)           // application/json; charset=utf-8
-c.Status(http.StatusAccepted)             // record status only; the framework still writes the body
+c.Status(http.StatusAccepted)                      // record status only; the framework still writes the body
+c.AbortWithStatusString(401, "unauthorized")       // reject with plain text and abort the chain
+c.AbortWithStatusJSON(403, map[string]string{"error": "forbidden"}) // reject with JSON and abort
 ```
 
-A `c.JSON` serialization failure is a server-side error: aborted with a generic 500, no details echoed. `Status` matches `net/http` — flushed to the wire on first write, and recorded only once.
+`Status` matches `net/http` — flushed to the wire on first write, and recorded only once. An `AbortWithStatusJSON` serialization failure is a server-side error: aborted with a generic 500, no details echoed. For full control of the response, declare an `http.ResponseWriter` parameter in the handler.
 
 ## Scenario examples
 
@@ -95,7 +95,7 @@ Auth is a cross-cutting concern — dozens of endpoints share it, and unauthenti
 gbl.Use(func(c *gbl.Context) {
     uid, ok := parseToken(c.Request.Header.Get("Authorization"))
     if !ok {
-        c.AbortWithStatus(http.StatusUnauthorized)
+        c.AbortWithStatusString(http.StatusUnauthorized, "unauthorized")
         return
     }
     c.Set("uid", uid)
@@ -111,7 +111,7 @@ gbl.Get("/orders", func(c *gbl.Context) []Order {
 })
 ```
 
-### Scenario 2: monitoring and body rewriting
+### Scenario 2: monitoring
 
 After the handler runs, only the Context can see the stashed return value and the effective status/size; the injected `http.ResponseWriter` can only write, not read these.
 
@@ -119,8 +119,8 @@ After the handler runs, only the Context can see the stashed return value and th
 gbl.Use(func(c *gbl.Context) {
     c.Next()
     metrics.Observe(c.StatusCode(), c.Size())
-    if res, ok := c.Result().(string); ok && !c.IsWritten() {
-        c.String(http.StatusOK, strings.ToUpper(res)) // override the default body
+    if c.Aborted() {
+        log.Printf("request aborted, status %d", c.StatusCode())
     }
 })
 ```

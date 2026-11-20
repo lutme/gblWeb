@@ -1,13 +1,13 @@
 # 错误与 panic
 
-GBL 的错误策略按**消息是谁写的**划分回显权：**开发者写的消息原样到达客户端**——显式的 `Abort`、（若你装了）你的 `PanicProcessor`、`Validate` 返回的错误文本；**框架从内部拼出的消息永不回显**——非预期 panic 的原因、绑定失败的反射细节只进服务端日志，客户端只拿通用 `500` / `400`。请求解析错误（坏 Content-Type、body 超限）描述的是客户端自己的请求帧，不含内部标识，故原样回显。
+GBL 的错误策略按**消息是谁写的**划分回显权：**开发者写的消息原样到达客户端**——显式中止（`Abort` 系列）、（若你装了）你的 `PanicProcessor`、`Validate` 返回的错误文本；**框架从内部拼出的消息永不回显**——非预期 panic 的原因、绑定失败的反射细节只进服务端日志，客户端只拿通用 `500` / `400`。请求解析错误（坏 Content-Type、body 超限、JSON body 为空）描述的是客户端自己的请求帧，不含内部标识，故原样回显。
 
 ## 什么能到达客户端
 
 | 来源 | 客户端看到 |
 |---|---|
-| `gbl.Abort(status, msg)` | 你给的 status + msg（纯文本） |
-| `c.AbortWithStatus` / `c.AbortWithStatusJSON` | 你给的状态 / JSON body |
+| `c.AbortWithStatusString(status, body)` | 你给的 status + 纯文本 body |
+| `c.AbortWithStatusJSON(status, body)` | 你给的 status + JSON body |
 | 校验失败（`Validatable`） | 400 + `Validate` 错误文本原样回显（消息是你写的，披露责任在你） |
 | 请求解析失败（坏 Content-Type、body 超限） | 400 / 413 + 原因（客户端自己的请求帧问题） |
 | 装配失败（缺 JSON 成员、类型转换错误） | 通用 400（参数名、Go 类型等反射细节只进日志） |
@@ -15,22 +15,24 @@ GBL 的错误策略按**消息是谁写的**划分回显权：**开发者写的�
 | 其他任何 panic | 通用 500 `Internal Server Error`（堆栈进日志） |
 | 注册了 `PanicProcessor` | **以上所有被恢复的值都归它渲染** |
 
-## Abort(status, msg)
+## Abort 系列：显式中止
 
 ```go
 gbl.Get("/admin", func(c *gbl.Context) {
     if !isAdmin(c) {
-        gbl.Abort(http.StatusForbidden, "forbidden") // status+msg 确实到达客户端
+        c.AbortWithStatusString(http.StatusForbidden, "forbidden") // status+msg 确实到达客户端
+        return
     }
     // ... 这里一个裸 panic 会是通用 500，细节被隐藏
 })
 ```
 
-`Abort` 必须在 handler 或中间件内调用。与裸 `panic` 不同，它的消息**保证**到达客户端。Context 上也有带状态/body 的变体：
+`Abort` 系列必须在声明了 `*Context` 的 handler 或中间件内调用。与裸 `panic` 不同，它的消息**保证**到达客户端。三个变体：
 
 ```go
-c.AbortWithStatus(http.StatusUnauthorized)          // 无 body，状态立即落线
-c.AbortWithStatusJSON(http.StatusBadRequest, errBody) // JSON body + 中断链
+c.Abort()                                           // 只中断链，不写任何内容
+c.AbortWithStatusString(http.StatusUnauthorized, "unauthorized") // 纯文本 body + 中断链
+c.AbortWithStatusJSON(http.StatusBadRequest, errBody)            // JSON body + 中断链
 ```
 
 ## PanicProcessor：接管一切渲染
@@ -67,7 +69,7 @@ gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {
 
 ## 已提交的 body 不可改写
 
-如果 panic 发生时 body 已经写出（handler 注入了 `http.ResponseWriter` 并写过，或中间件已 `c.JSON`），响应无法重写——框架只把已记录的状态码（或默认 200）落线。这是 HTTP 的固有限制，不是 GBL 的特殊行为。
+如果 panic 发生时 body 已经写出（handler 注入了 `http.ResponseWriter` 并写过，或 `Abort` 系列已写了拒绝响应），响应无法重写——框架只把已记录的状态码（或默认 200）落线。这是 HTTP 的固有限制，不是 GBL 的特殊行为。
 
 ## 内部如何处理
 
@@ -92,7 +94,7 @@ func main() {
     })
 
     gbl.Get("/deny", func(c *gbl.Context) {
-        gbl.Abort(http.StatusForbidden, "forbidden") // 同样交给处理器渲染
+        c.AbortWithStatusString(http.StatusForbidden, "forbidden") // 同样交给处理器渲染
     })
 
     gbl.Run()

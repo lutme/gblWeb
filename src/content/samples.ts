@@ -133,10 +133,11 @@ gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {
     }, gbl.HttpStatus(500)
 })
 
-// Explicit Abort messages still reach the client by design:
+// Explicit aborts still reach the client by design:
 gbl.Get("/admin", func(c *gbl.Context) {
     if !isAdmin(c) {
-        gbl.Abort(http.StatusForbidden, "forbidden")
+        c.AbortWithStatusString(http.StatusForbidden, "forbidden")
+        return
     }
 })`
 
@@ -153,8 +154,12 @@ export const middlewareCode = `gbl.Use(func(c *gbl.Context) {
         c.StatusCode(), time.Since(start))
 })
 
-// Ready-made access log: one line per request.
-gbl.Use(gbl.AccessLog)`
+// Access log is yours: not built in, one middleware line via the engine Logger.
+gbl.Use(func(c *gbl.Context) {
+    c.Next()
+    gbl.Info("access", "method", c.Request.Method, "path", c.Request.URL.Path,
+        "status", c.StatusCode(), "size", c.Size())
+})`
 
 export interface Scenario {
   id: 'path' | 'json' | 'form' | 'upload' | 'returns'
