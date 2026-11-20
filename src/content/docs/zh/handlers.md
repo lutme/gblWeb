@@ -38,8 +38,8 @@ gbl.Get("/bad", func() (string, error) { ... })     // ✗ 启动失败：最多
 
 **第二步：没命中路径时，取值来源由 `Content-Type` 二选一（不是级联回退）：**
 
-- **JSON 模式**：`application/json`（含 `+json` 后缀，如 `application/vnd.api+json`）且 body 非空白 → 只从 JSON body 取，form/query 一律不看。
-- **form/query 模式**：其他所有情况（含 JSON 但 body 为空）→ 从 form/query 值取。`POST`/`PUT`/`PATCH` 下，body 字段与同名 query 都能绑定，**body 优先**。
+- **JSON 模式**：`application/json`（含 `+json` 后缀，如 `application/vnd.api+json`）且 body 非空白 → 只从 JSON body 取，form/query 一律不看。声明了 JSON 却发空 body 不回退——直接 **400**（`JSON body is empty` 原样回显）。
+- **form/query 模式**：其他所有情况 → 从 form/query 值取。`POST`/`PUT`/`PATCH` 下，body 字段与同名 query 都能绑定，**body 优先**。
 
 gbl 自己的名字查找一律**精确匹配**：路径/form/query 的 key、或顶层 JSON 成员，都按原样匹配，不做大小写折叠。（JSON body 内部的结构体字段由 `encoding/json` 解码，它按字段名忽略大小写匹配——这是唯一的例外。）
 

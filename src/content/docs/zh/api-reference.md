@@ -13,7 +13,6 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | `Patch` | `func Patch(path string, fn any)` | 注册 PATCH；读 body |
 | `Delete` | `func Delete(path string, fn any)` | 注册 DELETE；不读 body |
 | `Options` | `func Options(path string, fn any)` | 注册 OPTIONS；未注册时自动 204 + Allow |
-| `Match` | `func Match(methods []string, path string, fn any)` | 一个 handler 挂多个动词，大小写均可 |
 | `Group` | `func Group(prefix string) RouteGroup` | 创建带前缀与作用域中间件的分组 |
 
 详见[路由](/docs/routing)、[路由分组](/docs/groups)。
@@ -22,9 +21,11 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `Run` | `func Run()` | 启动唯一引擎并阻塞；信号优雅停机 |
-| `Shutdown` | `func Shutdown(ctx context.Context) error` | 主动优雅停机；幂等、跨 goroutine 安全 |
+| `Run` | `func Run()` | 启动唯一引擎并阻塞；信号优雅停机；引擎只服务一次，重复调用 panic |
+| `Shutdown` | `func Shutdown(ctx context.Context) error` | 主动优雅停机；幂等、跨 goroutine 安全；Run 前调用返回 `http.ErrServerClosed` |
 | `Use` | `func Use(middleware ...HandlerFunc)` | 追加全局中间件（Run 前注册） |
+
+> **Run 之后引擎只读。** 所有装配 API——路由注册、`Use` / `GroupUse`、`SetLogger`、`Configure`、`SetCorsConfig`、`RegisterPanicProcessor`、`SetMax*`——必须在 `Run` 之前调用；之后再调会 panic 并给出 *"must be called before Run"* 提示，而不是被悄悄吞掉。
 
 详见[服务生命周期](/docs/lifecycle)、[中间件](/docs/middleware)。
 
@@ -35,13 +36,13 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | `Context` | 请求上下文结构体；导出字段 `Request *http.Request`；池化，不得跨请求持有 |
 | `Context.Next` | 执行链上剩余部分 |
 | `Context.Abort` / `Aborted` | 中断链 / 查询是否中断 |
-| `Context.AbortWithStatus` / `AbortWithStatusJSON` | 以状态 / JSON 拒绝并中断 |
+| `Context.AbortWithStatusString` / `AbortWithStatusJSON` | 以纯文本 / JSON 拒绝并中断 |
 | `Context.PathParam` | 按名取路径参数（中间件用） |
 | `Context.Set` / `Get` | 请求级 key/value |
-| `Context.JSON` / `String` / `Status` | 写响应 / 记录状态 |
+| `Context.Status` | 记录响应状态（body 由返回值自动序列化写出） |
 | `Context.Result` / `IsWritten` / `StatusCode` / `Size` | 响应阶段观察 |
 | `HandlerFunc` | `type HandlerFunc func(c *Context)`，中间件类型 |
-| `RouteGroup` | 分组接口：Use + 全部动词 + Match，均返回自身可链式 |
+| `RouteGroup` | 分组接口：GroupUse + 全部动词，均返回自身可链式 |
 
 详见[Context 详解](/docs/context)。
 
@@ -58,7 +59,6 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `Abort` | `func Abort(status int, msg string)` | 立即结束请求，status+msg 保证到达客户端 |
 | `RegisterPanicProcessor` | `func RegisterPanicProcessor(p PanicProcessor)` | 安装 panic 渲染器，接管一切被恢复值的渲染 |
 | `PanicProcessor` | `type PanicProcessor func(err any) (any, HttpStatus)` | 渲染器类型 |
 | `HttpStatus` | `type HttpStatus int` | 渲染器返回的状态码类型 |
@@ -90,9 +90,8 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 |---|---|---|
 | `Logger` | `interface { Info/Warn/Error(msg string, kv ...any) }` | 结构化日志契约 |
 | `BannerLogger` | `interface { Banner(block string) }` | 可选伴随接口，原样输出启动横幅 |
-| `SetLogger` | `func SetLogger(l Logger)` | 安装 Logger；nil 被忽略 |
-| `NewStdLogger` | `func NewStdLogger(l *log.Logger) Logger` | 标准库 logger 适配器 |
-| `AccessLog` | `func AccessLog(c *Context)` | 现成访问日志中间件 |
+| `SetLogger` | `func SetLogger(l Logger)` | 安装 Logger；nil 被忽略；Run 前调用 |
+| `Info` / `Warn` / `Error` | `func Info(msg string, kv ...any)` 等 | 包级业务日志入口，走引擎当前 Logger |
 
 详见[日志](/docs/logging)。
 

@@ -70,7 +70,7 @@ Route conflicts, invalid path syntax, invalid configuration, unrecoverable param
 | Context | Pooled `Context`, request-scoped key/value, generic accessors `Value[T]` / `MustValue[T]` |
 | Validation | `Validatable` interface, checked after binding and before the handler |
 | Errors | `Abort` / `PanicProcessor` / generic 500 fallback, zero leakage of internal details |
-| Logging | Structured `Logger` interface, colored console, any backend via `SetLogger`, `AccessLog` middleware, startup banner |
+| Logging | Structured `Logger` interface, private colored console, any backend via `SetLogger`, package-level `Info/Warn/Error`, startup banner |
 | Configuration | `Configure` in code, TLS, timeouts; the kernel reads no configuration file |
 | Uploads | Three independent limits (total body / memory threshold / per file), 413 rejection |
 | CORS | Struct-based configuration, preflight handling, credentials + wildcard combination rejected at startup |

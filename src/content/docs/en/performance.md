@@ -26,6 +26,7 @@ Registration only queues; `generateRoute` at `Run()` does all the heavy lifting 
 | `bodyBufferPool` | JSON body read buffer (returned as soon as binding finishes; decoded results are independent copies) |
 | `segmentPool` | path-segment slice for route matching |
 | `colorBufPool` | console colorized-line buffer |
+| `responseBufferPool` | response write buffer (serialized results land here before being written out) |
 
 Pooling saves not just allocations but GC pressure — especially visible under high concurrency. Every pooled object is cleared of references before return, so no previous request's data stays pinned in memory or leaks into the next request.
 

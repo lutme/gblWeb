@@ -47,7 +47,7 @@ go run .
   tls        disabled
   routes     1
 
-2026/11/15 10:00:00 gbl: INFO started successfully, ready to accept requests
+2026/11/15 10:00:00 INFO started successfully, ready to accept requests
 ```
 
 > `version` 取自构建信息：`go run` 或未打标签的本地构建显示 `(devel)`，tagged 版本会显示真实版本号。`listening` 会把 `0.0.0.0` / `::` 这类通配绑定显示为 `localhost`，方便直接点开。横幅块原样输出、不带前缀；最后的成功提示是普通 Info 记录，带时间戳与级别。

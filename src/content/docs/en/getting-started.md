@@ -47,7 +47,7 @@ On startup you will see GBL's banner, the status table, and a final startup-succ
   tls        disabled
   routes     1
 
-2026/11/15 10:00:00 gbl: INFO started successfully, ready to accept requests
+2026/11/15 10:00:00 INFO started successfully, ready to accept requests
 ```
 
 > `version` comes from the build info: `go run` or an untagged local build shows `(devel)`, a tagged build shows the real version. `listening` renders wildcard binds such as `0.0.0.0` / `::` as `localhost` so the URL is clickable. The banner block prints verbatim without prefixes; the success line is an ordinary Info record carrying timestamp and level.

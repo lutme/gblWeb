@@ -16,24 +16,28 @@
 
 配置在 `Run` 之前就已由 `Configure` 定稿（见[配置](/docs/configuration)）；注册与配置类错误都在 generateRoute / 监听阶段暴露。任何致命启动错误都会 panic，且**先经 Logger 记录原因再 panic**（fail-fast）。
 
+## Run 之后引擎只读
+
+`Run` 会冻结全部装配期决定——路由注册、`Use` / `GroupUse`、`SetLogger`、`Configure`、CORS、大小上限、panic 渲染器。在 `Run` 之后调用它们（或重复调用 `Run`）会 panic 并给出明确的 *"必须在 Run 之前调用"* 提示，而不是被悄悄吞掉：错误的注册**顺序**和错误的注册**内容**一样是编程错误，值得同样响亮的对待。这类 panic 不再走启动日志（进程已过启动期），调用方自己的栈就直接指出错处。
+
 ## 启动横幅
 
 ```text
   ┏━╸  ┏┓   ╻
-  ┃╺┓  ┣┻┓  ┃      zero-dependency Go web framework
+  ┃╺┓  ┣┻┓  ┃
   ┗━┛  ┗━┛  ┗━╸
 
-  version    (devel)
+  version    v0.1.0
   listening  http://localhost:9801
   tls        disabled
   routes     7
 
-2026/11/15 10:00:00 gbl: INFO started successfully, ready to accept requests
+2026/11/15 10:00:00 INFO started successfully, ready to accept requests
 ```
 
-- `version` 读自构建信息，无需维护版本常量；本地构建为 `(devel)`；
+- `version` 读自二进制内嵌的构建信息，无需维护版本常量：作为依赖编译进你的应用时，显示你 `go.mod` 要求的 gbl 标签版本；本地或 replace 构建为 `(devel)`；
 - `listening` 把 `0.0.0.0` / `::` 显示为 `localhost`；
-- `routes` 统计所有动词树里真实可路由的终端数（Match 挂多个动词按多条计）；
+- `routes` 统计所有动词树里真实可路由的终端数（同一 handler 注册多个动词按多条计）；
 - 实现了 `BannerLogger` 的 Logger 拿到整块原样输出；否则作为一条 Info。
 - 横幅块之后紧跟一条普通 Info：`started successfully, ready to accept requests`，带时间戳与级别。
 
@@ -71,7 +75,7 @@ if err := gbl.Shutdown(ctx); err != nil {
 所有启动、配置、注册类失败都是 fail-fast：先经引擎 Logger 记录原因，再 panic——还没开始服务就挂掉的部署，也会在你的日志 sink 里留下原因，而不只是一条裸栈。端口占用、路由冲突、危险的 CORS 策略都走这条路。
 
 ```text
-2026/11/19 10:00:00 gbl: ERROR startup aborted reason=listen tcp :9801: bind: address already in use
+2026/11/19 10:00:00 ERROR startup aborted reason=listen tcp :9801: bind: address already in use
 ```
 
 日志默认只在控制台；装了自定义 `Logger` 就落在你的 sink 里（见[日志](/docs/logging)）。内核不写任何兜底文件。

@@ -70,7 +70,7 @@ GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用�
 | 上下文 | 池化 `Context`、请求级 key/value、泛型取值 `Value[T]` / `MustValue[T]` |
 | 校验 | `Validatable` 接口，装配后 handler 前自动校验 |
 | 错误 | `Abort` / `PanicProcessor` / 通用 500 兜底，内部细节零泄漏 |
-| 日志 | 结构化 `Logger` 接口、彩色控制台、`SetLogger` 接入任意后端、`AccessLog` 中间件、启动横幅 |
+| 日志 | 结构化 `Logger` 接口、私有彩色控制台、`SetLogger` 接入任意后端、包级 `Info/Warn/Error`、启动横幅 |
 | 配置 | `Configure` 代码配置、TLS、超时；内核不读配置文件 |
 | 上传 | 三重独立限额（总 body / 内存阈值 / 单文件），413 拒绝 |
 | CORS | 结构体配置、预检处理、凭据+通配符危险组合启动即拦截 |

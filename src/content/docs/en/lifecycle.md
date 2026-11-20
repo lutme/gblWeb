@@ -19,24 +19,28 @@
 
 The configuration is finalized by `Configure` before `Run` (see [Configuration](/docs/configuration)); registration and configuration errors surface in the generateRoute / listen stages. Every fatal startup error panics, and **the reason is logged through the Logger before the panic** (fail-fast).
 
+## The engine is read-only after Run
+
+`Run` freezes every assembling-time decision — route registration, `Use` / `GroupUse`, `SetLogger`, `Configure`, CORS, size limits, the panic renderer. Calling one of them after `Run` (or calling `Run` twice) panics with an explicit *"must be called before Run"* message instead of being silently swallowed: a wrong registration **order** is a programming error exactly like a wrong registration **content**, and deserves the same loud treatment. These panics skip the startup log (the process is past startup); the caller's own stack names the mistake.
+
 ## The startup banner
 
 ```text
   ┏━╸  ┏┓   ╻
-  ┃╺┓  ┣┻┓  ┃      zero-dependency Go web framework
+  ┃╺┓  ┣┻┓  ┃
   ┗━┛  ┗━┛  ┗━╸
 
-  version    (devel)
+  version    v0.1.0
   listening  http://localhost:9801
   tls        disabled
   routes     7
 
-2026/11/15 10:00:00 gbl: INFO started successfully, ready to accept requests
+2026/11/15 10:00:00 INFO started successfully, ready to accept requests
 ```
 
-- `version` is read from the build info — no version constant to maintain; local builds show `(devel)`;
+- `version` is read from the build info embedded in the binary — no version constant to maintain: compiled into your app as a dependency it shows the tagged gbl version your `go.mod` requires; a local or replaced build shows `(devel)`;
 - `listening` renders `0.0.0.0` / `::` as `localhost`;
-- `routes` counts the real routable terminals across all verb trees (a Match on several verbs counts once per verb);
+- `routes` counts the real routable terminals across all verb trees (one handler registered on several verbs counts once per verb);
 - a Logger implementing `BannerLogger` receives the whole block verbatim; otherwise it arrives as one Info.
 - the block is followed by an ordinary Info line: `started successfully, ready to accept requests`, with timestamp and level.
 
@@ -74,7 +78,7 @@ if err := gbl.Shutdown(ctx); err != nil {
 All startup, configuration and registration failures are fail-fast: the reason is logged through the engine Logger first, then the process panics — a deployment that dies before serving still leaves the reason in your log sink, not just a bare stack. A busy port, a route conflict and a dangerous CORS policy all take this path.
 
 ```text
-2026/11/19 10:00:00 gbl: ERROR startup aborted reason=listen tcp :9801: bind: address already in use
+2026/11/19 10:00:00 ERROR startup aborted reason=listen tcp :9801: bind: address already in use
 ```
 
 Logs go to the console by default, or to your sink when a custom `Logger` is installed (see [Logging](/docs/logging)). The kernel writes no fallback files.

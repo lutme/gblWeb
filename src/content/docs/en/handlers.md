@@ -38,8 +38,8 @@ For each business parameter:
 
 **Step 2: without a path hit, the source is chosen by `Content-Type` — one of two modes, not a cascading fallback:**
 
-- **JSON mode**: `application/json` (including the `+json` suffix, e.g. `application/vnd.api+json`) with a non-blank body → values come only from the JSON body; form/query is never consulted.
-- **form/query mode**: everything else (including JSON with an empty body) → values come from form/query. Under `POST`/`PUT`/`PATCH`, both body fields and same-named query values can bind, with **the body winning**.
+- **JSON mode**: `application/json` (including the `+json` suffix, e.g. `application/vnd.api+json`) with a non-blank body → values come only from the JSON body; form/query is never consulted. Declaring JSON but sending an empty body does not fall back — it is rejected with a **400** (`JSON body is empty` echoed verbatim).
+- **form/query mode**: everything else → values come from form/query. Under `POST`/`PUT`/`PATCH`, both body fields and same-named query values can bind, with **the body winning**.
 
 gbl's own name lookups are **exact**: a path/form/query key, or a top-level JSON member, is matched verbatim with no case folding. (Struct fields inside a JSON body are decoded by `encoding/json`, which matches field names case-insensitively — the one exception.)
 
