@@ -4,7 +4,7 @@
 type HandlerFunc func(c *Context)
 ```
 
-A `HandlerFunc` is one ring of the onion chain. The whole chain is an ordered slice — **engine-level `Use` (outermost) → group `Use` → … → the matched handler (innermost)** — and the `Context` holds a cursor pointing at the current ring.
+A `HandlerFunc` is one ring of the onion chain. The whole chain is an ordered slice — **engine-level `Use` (outermost) → group `GroupUse` → … → the matched handler (innermost)** — and the `Context` holds a cursor pointing at the current ring.
 
 ## The onion model
 
@@ -49,7 +49,7 @@ gbl.Use(func(c *gbl.Context) {
 })
 
 api := gbl.Group("/api")
-api.Use(func(c *gbl.Context) {
+api.GroupUse(func(c *gbl.Context) {
     fmt.Println("group before")
     c.Next()
     fmt.Println("group after")
@@ -72,9 +72,9 @@ api.Get("/ping", func() string {
 **To abort the chain you must call an `Abort` method**: it pushes the cursor past the end, skipping every ring that has not started (including the handler).
 
 ```go
-c.Abort()                            // abort, write nothing
-c.AbortWithStatus(401)               // reject with 401, no body, status recorded immediately
-c.AbortWithStatusJSON(403, body)     // reject with a JSON body
+c.Abort()                                    // abort, write nothing
+c.AbortWithStatusString(401, "unauthorized") // reject with a plain-text body
+c.AbortWithStatusJSON(403, body)             // reject with a JSON body
 ```
 
 Two easy traps:
@@ -91,7 +91,7 @@ gbl.Use(func(c *gbl.Context) {
 // ✓ Correct
 gbl.Use(func(c *gbl.Context) {
     if !allowed(c) {
-        c.AbortWithStatus(http.StatusForbidden)
+        c.AbortWithStatusString(http.StatusForbidden, "forbidden")
         return
     }
     c.Next()
@@ -103,13 +103,14 @@ gbl.Use(func(c *gbl.Context) {
 ## Registration timing
 
 - engine-level `gbl.Use(...)`: merged when chains are assembled at `Run()` — register any time **before `Run()`**;
-- group `group.Use(...)`: snapshotted at route registration — **must precede that group's route registrations** (see [Route Groups](/docs/groups));
-- chains are frozen into each route at startup; zero assembly cost per request.
+- group `group.GroupUse(...)`: snapshotted at route registration — **must precede that group's route registrations** (see [Route Groups](/docs/groups));
+- chains are frozen into each route at startup; zero assembly cost per request;
+- after `Run()` the engine is read-only: calling `Use` / `GroupUse` / any registration method again panics.
 
 `Use` is variadic — install several rings at once:
 
 ```go
-gbl.Use(recoverer, requestID, gbl.AccessLog)
+gbl.Use(recoverer, requestID)
 ```
 
 ## Practical middleware examples
@@ -144,26 +145,32 @@ gbl.Use(func(c *gbl.Context) {
 })
 ```
 
-### Rewriting the body in the response phase
+### Reading results in the response phase
 
-After the handler runs, the stashed result has not been written back yet — this is the rewriting window:
+After the handler runs, the stashed result has not been written back yet — middleware can read the final status and return value at this point:
 
 ```go
 gbl.Use(func(c *gbl.Context) {
     c.Next()
-    if res, ok := c.Result().(string); ok && !c.IsWritten() {
-        c.String(http.StatusOK, strings.ToUpper(res))
+    if res, ok := c.Result().(string); ok {
+        gbl.Info("handler returned", "len", len(res), "written", c.IsWritten())
     }
 })
 ```
 
-`c.Result()` returns the handler's raw return value (boxed only on first read); `c.IsWritten()` tells whether the body has been committed. Once written, the framework never overwrites it.
+`c.Result()` returns the handler's raw return value (boxed only on first read); `c.IsWritten()` tells whether the body has been committed. Middleware has **no API to rewrite the stashed body** — to write a response yourself, use `AbortWithStatusString` / `AbortWithStatusJSON` (they write the body and stop the chain), or declare an `http.ResponseWriter` parameter in the handler for full control.
 
-### Built-in access log
+### Access log (install your own)
+
+The framework ships no built-in access-log middleware; one line is enough:
 
 ```go
-gbl.Use(gbl.AccessLog)
-// One line per request: method / path / status / size / duration, emitted through the engine Logger
+gbl.Use(func(c *gbl.Context) {
+    start := time.Now()
+    c.Next()
+    gbl.Info("access", "method", c.Request.Method, "path", c.Request.URL.Path,
+        "status", c.StatusCode(), "size", c.Size(), "cost", time.Since(start))
+})
 ```
 
 ## The complete lifecycle of a request
@@ -177,6 +184,6 @@ From arrival to the response reaching the client:
 5. **Execute the chain.** `c.Next()` drives down to the terminal `routeEndpoint`, which calls `invokeHandler()`: parse → bind → validate → invoke the handler via reflection → serialize and stash.
 6. **Write the response.** If anyone already wrote a body, that stands; otherwise write the stashed result with the Content-Type chosen at registration, flushing the recorded status code first (default 200).
 7. **Clean up.** Remove multipart temp files; reset the Context, path-parameter map and response writer and return them to their pools.
-8. **Any panic** is recovered and rendered: an explicit Abort reaches the client verbatim; a registered PanicProcessor takes over; anything else is logged and answered with a generic 500.
+8. **Any panic** is recovered and rendered: an explicit abort (the `Abort` family) reaches the client verbatim; a registered PanicProcessor takes over; anything else is logged and answered with a generic 500.
 
 Next: [Context](/docs/context) — the single data carrier along the chain.

@@ -4,7 +4,7 @@
 type HandlerFunc func(c *Context)
 ```
 
-`HandlerFunc` 是洋葱链上的一环。整条链是一个有序切片——**引擎级 `Use`（最外）→ 分组 `Use` → … → 匹配到的 handler（最内）**，`Context` 里保存着一个指向当前环的游标。
+`HandlerFunc` 是洋葱链上的一环。整条链是一个有序切片——**引擎级 `Use`（最外）→ 分组 `GroupUse` → … → 匹配到的 handler（最内）**，`Context` 里保存着一个指向当前环的游标。
 
 ## 洋葱模型
 
@@ -49,7 +49,7 @@ gbl.Use(func(c *gbl.Context) {
 })
 
 api := gbl.Group("/api")
-api.Use(func(c *gbl.Context) {
+api.GroupUse(func(c *gbl.Context) {
     fmt.Println("group before")
     c.Next()
     fmt.Println("group after")
@@ -72,9 +72,9 @@ api.Get("/ping", func() string {
 **要中断链，必须调 `Abort` 系列方法**：它把游标推到末尾之后，跳过所有尚未开始的环（含 handler）。
 
 ```go
-c.Abort()                            // 中断，不写任何内容
-c.AbortWithStatus(401)               // 以 401 拒绝，无 body，立即落状态
-c.AbortWithStatusJSON(403, body)     // 以 JSON body 拒绝
+c.Abort()                                    // 中断，不写任何内容
+c.AbortWithStatusString(401, "unauthorized") // 以纯文本 body 拒绝
+c.AbortWithStatusJSON(403, body)             // 以 JSON body 拒绝
 ```
 
 两个容易踩的坑：
@@ -91,7 +91,7 @@ gbl.Use(func(c *gbl.Context) {
 // ✓ 正确
 gbl.Use(func(c *gbl.Context) {
     if !allowed(c) {
-        c.AbortWithStatus(http.StatusForbidden)
+        c.AbortWithStatusString(http.StatusForbidden, "forbidden")
         return
     }
     c.Next()
@@ -103,13 +103,14 @@ gbl.Use(func(c *gbl.Context) {
 ## 注册时序
 
 - 引擎级 `gbl.Use(...)`：在 `Run()` 组装链时合并，**`Run()` 之前**注册即可；
-- 分组 `group.Use(...)`：注册路由时快照，**必须先于该分组的路由注册**（见[路由分组](/docs/groups)）；
-- 链在启动时冻结进每条路由，请求期零组装开销。
+- 分组 `group.GroupUse(...)`：注册路由时快照，**必须先于该分组的路由注册**（见[路由分组](/docs/groups)）；
+- 链在启动时冻结进每条路由，请求期零组装开销；
+- `Run()` 之后引擎只读：再调 `Use` / `GroupUse` / 任何注册方法都会 panic。
 
 `Use` 是变参，可一次装多环：
 
 ```go
-gbl.Use(recoverer, requestID, gbl.AccessLog)
+gbl.Use(recoverer, requestID)
 ```
 
 ## 实用中间件示例
@@ -144,26 +145,32 @@ gbl.Use(func(c *gbl.Context) {
 })
 ```
 
-### 响应阶段改写 body
+### 响应阶段读取结果
 
-handler 跑完后，暂存结果还没写回——这是改写的窗口：
+handler 跑完后，暂存结果还没写回——中间件在此刻能读到最终状态与返回值：
 
 ```go
 gbl.Use(func(c *gbl.Context) {
     c.Next()
-    if res, ok := c.Result().(string); ok && !c.IsWritten() {
-        c.String(http.StatusOK, strings.ToUpper(res))
+    if res, ok := c.Result().(string); ok {
+        gbl.Info("handler returned", "len", len(res), "written", c.IsWritten())
     }
 })
 ```
 
-`c.Result()` 返回 handler 的原始返回值（首次读取才装箱）；`c.IsWritten()` 判断 body 是否已被提交。一旦写过，框架不再覆盖。
+`c.Result()` 返回 handler 的原始返回值（首次读取才装箱）；`c.IsWritten()` 判断 body 是否已被提交。中间件**没有改写暂存 body 的 API**——想自己写响应，用 `AbortWithStatusString` / `AbortWithStatusJSON`（写 body 的同时中断链），或在 handler 里声明 `http.ResponseWriter` 参数完全接管。
 
-### 内置访问日志
+### 访问日志（自己装）
+
+框架不内置访问日志中间件；一行就够：
 
 ```go
-gbl.Use(gbl.AccessLog)
-// 每请求一行：method / path / status / size / duration，经引擎 Logger 写出
+gbl.Use(func(c *gbl.Context) {
+    start := time.Now()
+    c.Next()
+    gbl.Info("access", "method", c.Request.Method, "path", c.Request.URL.Path,
+        "status", c.StatusCode(), "size", c.Size(), "cost", time.Since(start))
+})
 ```
 
 ## 请求的完整生命周期
@@ -177,6 +184,6 @@ gbl.Use(gbl.AccessLog)
 5. **执行链。** `c.Next()` 驱动到终端 `routeEndpoint`，它调用 `invokeHandler()`：解析 → 装配 → 校验 → 反射调用 handler → 序列化暂存。
 6. **写回响应。** 若已有人写过 body，以它为准；否则用注册时选定的 Content-Type 写出暂存结果，先落已记录的状态码（默认 200）。
 7. **收尾。** 清理 multipart 临时文件；Context、路径参数 map、响应写入器复位归还对象池。
-8. **任何 panic** 都被恢复并渲染：显式 Abort 原样到达客户端；注册了 PanicProcessor 则由它接管；其余记日志并回通用 500。
+8. **任何 panic** 都被恢复并渲染：显式中止（`Abort` 系列）原样到达客户端；注册了 PanicProcessor 则由它接管；其余记日志并回通用 500。
 
 下一章：[Context 详解](/docs/context)——链路上唯一的数据载体。

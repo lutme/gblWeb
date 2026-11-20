@@ -16,15 +16,15 @@ gbl.Options("/items", myOptions)           // OPTIONS（可选，见下）
 
 注册只是排队；真正的校验、装配计划构建、路由树插入都发生在 `Run()` 时。
 
-### Match：一个 handler 挂多个动词
+### 同一 handler 挂多个动词
+
+没有多动词合并注册的 API——每个动词各调一次，各占一条可路由规则：
 
 ```go
-// 动词名大小写均可；不支持的动词会中止启动
-gbl.Match([]string{http.MethodGet, http.MethodPost, http.MethodPut}, "/multi", multiHandler)
-gbl.Match([]string{"GET", "DELETE"}, "/multi2", multi2Handler)
+gbl.Get("/multi", multiHandler)
+gbl.Post("/multi", multiHandler)
+gbl.Put("/multi", multiHandler)
 ```
-
-`Match(methods []string, path string, fn any)` 为 `fn` 精确注册列出的这些方法，每个动词各占一条可路由规则。
 
 ## 路径语法
 

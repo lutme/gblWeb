@@ -16,15 +16,15 @@ gbl.Options("/items", myOptions)           // OPTIONS (optional, see below)
 
 Registration only queues; the real validation, bind-plan construction and routing-tree insertion all happen at `Run()`.
 
-### Match: one handler, several verbs
+### One handler on several verbs
+
+There is no multi-verb registration API — call once per verb; each verb owns one routable rule:
 
 ```go
-// Verb names are case-insensitive; unsupported verbs abort startup
-gbl.Match([]string{http.MethodGet, http.MethodPost, http.MethodPut}, "/multi", multiHandler)
-gbl.Match([]string{"GET", "DELETE"}, "/multi2", multi2Handler)
+gbl.Get("/multi", multiHandler)
+gbl.Post("/multi", multiHandler)
+gbl.Put("/multi", multiHandler)
 ```
-
-`Match(methods []string, path string, fn any)` registers `fn` for exactly the listed methods, one routable rule per verb.
 
 ## Path syntax
 
