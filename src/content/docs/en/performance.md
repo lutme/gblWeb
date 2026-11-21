@@ -20,6 +20,7 @@ Registration only queues; `generateRoute` at `Run()` does all the heavy lifting 
 | Pool | Reused object |
 |---|---|
 | `contextPool` | Context (all references cleared before returning it) |
+| `keysPool` | `Context.Set/Get` key/value map (cleared before return — eliminates Set/Get allocations) |
 | `responseWriterPool` | response-writer wrapper (underlying writer reference detached before return) |
 | `pathParamsPool` | path-parameter map |
 | `paramsPool` | reflection call-argument slice (stores pointers to avoid boxing) |
@@ -34,7 +35,8 @@ Pooling saves not just allocations but GC pressure — especially visible under 
 
 - path segmentation uses `strings.Cut` to produce **substrings** sharing the original path's backing storage — no copying;
 - the segment slice comes from a pool; once warm, matching produces no new allocations;
-- static children are direct map lookups; only variable branches backtrack.
+- static routes (no path parameters) never enter the radix tree — they live in per-method maps matched in O(1); only dynamic routes with parameters walk the tree;
+- inside the tree, static children are direct map lookups; only variable branches backtrack.
 
 ## Lazy boxing
 
