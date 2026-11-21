@@ -74,6 +74,7 @@ GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用�
 | 配置 | `Configure` 代码配置、TLS、超时；内核不读配置文件 |
 | 上传 | 三重独立限额（总 body / 内存阈值 / 单文件），413 拒绝 |
 | CORS | 结构体配置、预检处理、凭据+通配符危险组合启动即拦截 |
+| 压缩 | `Compress` gzip 中间件：Accept-Encoding / 可压缩类型 / 1 KB 三条件判定，自动 `Vary` |
 | 生命周期 | 信号优雅停机、`Shutdown` 主动停机、启动失败先日志后 panic |
 
 ## 环境要求

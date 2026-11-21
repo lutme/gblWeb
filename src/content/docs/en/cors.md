@@ -100,4 +100,4 @@ func main() {
 }
 ```
 
-Next: [Configuration](/docs/configuration).
+Next: [Compression](/docs/compression).

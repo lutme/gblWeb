@@ -162,7 +162,7 @@ gbl.Use(func(c *gbl.Context) {
 
 ### 访问日志（自己装）
 
-框架不内置访问日志中间件；一行就够：
+框架自带的现成中间件只有一个：`gbl.Compress`（gzip 响应压缩，见[响应压缩](/docs/compression)）。访问日志不内置，一行就够：
 
 ```go
 gbl.Use(func(c *gbl.Context) {

@@ -74,6 +74,7 @@ Route conflicts, invalid path syntax, invalid configuration, unrecoverable param
 | Configuration | `Configure` in code, TLS, timeouts; the kernel reads no configuration file |
 | Uploads | Three independent limits (total body / memory threshold / per file), 413 rejection |
 | CORS | Struct-based configuration, preflight handling, credentials + wildcard combination rejected at startup |
+| Compression | `Compress` gzip middleware: gated on Accept-Encoding, compressible type and a 1 KB minimum, sets `Vary` automatically |
 | Lifecycle | Signal-driven graceful shutdown, explicit `Shutdown`, log-then-panic on startup failure |
 
 ## Requirements

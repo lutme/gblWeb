@@ -103,6 +103,15 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 
 详见[跨域 CORS](/docs/cors)。
 
+## 响应压缩
+
+| 符号 | 签名 | 说明 |
+|---|---|---|
+| `Compress` | `func Compress(level int) HandlerFunc` | gzip 响应压缩中间件；Accept-Encoding / 可压缩类型 / 1 KB 三条件判定 |
+| `NoCompression` / `BestSpeed` / `DefaultCompression` / `BestCompression` / `HuffmanOnly` | `const`（= `compress/gzip` 对应值） | 压缩级别常量，重新导出免 import |
+
+详见[响应压缩](/docs/compression)。
+
 ## 配置
 
 | 符号 | 签名 | 说明 |

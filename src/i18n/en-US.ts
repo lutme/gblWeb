@@ -72,7 +72,7 @@ export default {
       },
       batteries: {
         title: 'Batteries Included',
-        desc: 'Structured logging with a pluggable sink, TLS, CORS security policy, validation and triple upload limits — one package covers it all.',
+        desc: 'Structured logging with a pluggable sink, TLS, CORS security policy, gzip response compression, validation and triple upload limits — one package covers it all.',
       },
     },
   },

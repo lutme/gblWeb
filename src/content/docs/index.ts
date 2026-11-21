@@ -21,6 +21,7 @@ export const docSections: DocSection[] = [
   { slug: 'uploads', group: 'robust', title: { 'zh-CN': '文件上传', 'en-US': 'File Uploads' } },
   { slug: 'logging', group: 'ops', title: { 'zh-CN': '日志', 'en-US': 'Logging' } },
   { slug: 'cors', group: 'ops', title: { 'zh-CN': '跨域 CORS', 'en-US': 'CORS' } },
+  { slug: 'compression', group: 'ops', title: { 'zh-CN': '响应压缩', 'en-US': 'Compression' } },
   { slug: 'configuration', group: 'ops', title: { 'zh-CN': '配置', 'en-US': 'Configuration' } },
   { slug: 'lifecycle', group: 'ops', title: { 'zh-CN': '服务生命周期', 'en-US': 'Server Lifecycle' } },
   { slug: 'deployment', group: 'ops', title: { 'zh-CN': '部署与构建', 'en-US': 'Deployment & Builds' } },

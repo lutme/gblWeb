@@ -100,4 +100,4 @@ func main() {
 }
 ```
 
-下一章：[配置](/docs/configuration)。
+下一章：[响应压缩](/docs/compression)。

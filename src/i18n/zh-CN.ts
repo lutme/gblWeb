@@ -72,7 +72,7 @@ export default {
       },
       batteries: {
         title: '开箱即用',
-        desc: '结构化日志（可插拔 sink）、TLS、CORS 安全策略、参数校验、上传三重限额——一个包全覆盖。',
+        desc: '结构化日志（可插拔 sink）、TLS、CORS 安全策略、gzip 响应压缩、参数校验、上传三重限额——一个包全覆盖。',
       },
     },
   },

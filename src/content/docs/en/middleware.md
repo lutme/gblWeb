@@ -162,7 +162,7 @@ gbl.Use(func(c *gbl.Context) {
 
 ### Access log (install your own)
 
-The framework ships no built-in access-log middleware; one line is enough:
+The framework ships exactly one ready-made middleware: `gbl.Compress` (gzip response compression, see [Compression](/docs/compression)). No access log is built in; one line is enough:
 
 ```go
 gbl.Use(func(c *gbl.Context) {

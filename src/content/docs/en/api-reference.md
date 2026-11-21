@@ -103,6 +103,15 @@ See [Logging](/docs/logging).
 
 See [CORS](/docs/cors).
 
+## Compression
+
+| Symbol | Signature | Description |
+|---|---|---|
+| `Compress` | `func Compress(level int) HandlerFunc` | gzip response-compression middleware; gated on Accept-Encoding, compressible type and a 1 KB minimum |
+| `NoCompression` / `BestSpeed` / `DefaultCompression` / `BestCompression` / `HuffmanOnly` | `const` (= the `compress/gzip` values) | compression levels, re-exported — no stdlib import needed |
+
+See [Compression](/docs/compression).
+
 ## Configuration
 
 | Symbol | Signature | Description |
