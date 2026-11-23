@@ -223,9 +223,9 @@ Once a body has been written (by handler or middleware), the framework no longer
 
 ## Where parameter names come from
 
-Go reflection exposes parameter **types**, not **names**. At startup GBL parses the handler's source file (AST) and recovers parameter names by the function's source position — closures resolve correctly too.
+Go reflection exposes parameter **types**, not **names**. At startup GBL recovers parameter names from two sources in order: the handler's own source file (AST, the development path), then the binary's **DWARF** debug info (the sourceless production path) — closures resolve correctly too.
 
-This creates one deployment constraint: when the source is unreadable at runtime (`-trimpath` builds, multi-stage images copying only the binary), handlers bound by name **fail at startup** with clear remediation guidance; a lone struct parameter is unaffected (field names come from reflection). See [Deployment & Builds](/docs/deployment).
+This leaves a single build constraint: `-ldflags "-w"/"-s"` strip DWARF, and handlers bound by name then **fail at startup** with clear remediation guidance; ordinary builds (including `-trimpath` and images copying only the binary) work as-is. A lone struct parameter is unaffected (field names come from reflection). See [Deployment & Builds](/docs/deployment).
 
 Unnamed parameters (`func(string) string`) receive placeholder names `arg0`, `arg1`… — a request key with that exact name would match, but always name your parameters.
 
