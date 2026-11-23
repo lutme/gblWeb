@@ -45,7 +45,7 @@ All other fields are unexported; the response writer is only available by declar
 |---|---|
 | `Next()` | execute the rest of the chain (the handler at the end) |
 | `PathParam(name) string` | read a matched path parameter by name (for middleware; business handlers should bind by name) |
-| `Set(key, value)` / `Get(key) (any, bool)` | request-scoped values (typed convenience: `Value` / `MustValue`, see [Request-scoped Values](/docs/values)) |
+| `Set(key, value)` / `Get[T](key) (T, bool)` / `Value[T](key) T` | request-scoped values, typed generically (see [Request-scoped Values](/docs/values)) |
 | `Result() any` | the handler's return value as `any` (valid after `Next()`); boxed only on first read |
 | `IsWritten() bool` | whether the body has been committed |
 | `StatusCode() int` | the status to be / already sent (default 200) |
@@ -104,8 +104,8 @@ gbl.Use(func(c *gbl.Context) {
 // uid comes from the token, not path/query/body — automatic binding cannot provide it.
 // Context is the only channel from middleware to handler.
 gbl.Get("/orders", func(c *gbl.Context) []Order {
-    v, _ := c.Get("uid")
-    return loadOrders(v.(int64))
+    uid, _ := c.Get[int64]("uid")
+    return loadOrders(uid)
 })
 ```
 

@@ -18,7 +18,6 @@ export const runCode = `go run .
 # GET http://localhost:9801/hello  ->  hello, gbl`
 
 export const configureCode = `gbl.Configure(func(c *gbl.Config) {
-    c.Name = "myapp"
     c.Port = "9802"
 
     // TLS is enabled when both CertFile and KeyFile are set
@@ -103,7 +102,7 @@ gbl.Use(func(c *gbl.Context) {
 
 // The handler never touches the token.
 gbl.Get("/orders", func(c *gbl.Context) []Order {
-    uid := gbl.MustValue[int64](c, "uid")
+    uid := c.Value[int64]("uid")
     return loadOrders(uid)
 })`
 

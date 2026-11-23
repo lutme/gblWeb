@@ -1,6 +1,6 @@
 # 请求级取值
 
-中间件用 `c.Set` 存值，handler（或后续环）用 `c.Get` 读取。这是中间件向业务传递数据的**唯一通道**——token 解析出的用户 ID、请求 ID、租户信息等，都不来自 path/query/body，自动绑定给不了。
+中间件用 `c.Set` 存值，handler（或后续环）用泛型方法 `c.Get[T]` / `c.Value[T]` 读取。这是中间件向业务传递数据的**唯一通道**——token 解析出的用户 ID、请求 ID、租户信息等，都不来自 path/query/body，自动绑定给不了。
 
 ## Set / Get
 
@@ -11,41 +11,39 @@ gbl.Use(func(c *gbl.Context) {
 })
 
 gbl.Get("/me", func(c *gbl.Context) string {
-    v, ok := c.Get("uid") // any + 是否存在
+    uid, ok := c.Get[int64]("uid") // 断言由框架代劳
     if !ok {
         return "anonymous"
     }
-    return fmt.Sprintf("user %d", v.(int64)) // 自己断言成存进去的类型
+    return fmt.Sprintf("user %d", uid)
 })
 ```
 
-- `Set(key string, value any)`：同 key 覆盖；袋子懒创建，不用不分配。
-- `Get(key string) (any, bool)`：key 不存在返回 `nil, false`；类型断言由调用方负责。
+- `Set(key string, value any)`：同 key 覆盖；袋子懒创建、池化回收（`keysPool`），高频 `Set/Get` 零分配。
+- `Get[T](key string) (T, bool)`：类型化读取——key 不存在**或类型不符**都返回 `T` 的零值 + `false`，由调用方决定怎么处理；`nil` Context 安全。
+- 不想指定类型时 `Get[any]` 原样取回存的值。
 - 袋子随 Context 池化清空，**不会泄漏到下一个请求**。
 
-## 泛型助手：Value / MustValue
-
-免去手动断言：
+## Value：不需要 ok 时
 
 ```go
-uid, ok := gbl.Value[int64](c, "uid")           // ok == true, uid == 7
-name := gbl.MustValue[string](c, "displayName") // 缺失/类型不符 → ""
+name := c.Value[string]("displayName") // 缺失/类型不符 → ""
 ```
 
-| 函数 | 签名 | 缺失或类型不符时 |
+| 方法 | 签名 | 缺失或类型不符时 |
 |---|---|---|
-| `Value[T]` | `func Value[T any](c *Context, key string) (T, bool)` | 零值 + `false`，调用方决定怎么处理 |
-| `MustValue[T]` | `func MustValue[T any](c *Context, key string) T` | 只返回零值 |
+| `Get[T]` | `func (c *Context) Get[T any](key string) (T, bool)` | 零值 + `false` |
+| `Value[T]` | `func (c *Context) Value[T any](key string) T` | 只返回零值 |
 
 两个细节：
 
-- **为什么是包级函数而不是方法？** Go 的方法不能带类型参数，泛型助手只能做成 `gbl.Value[T](c, key)` 的形式。
-- `Value` 对 `nil` Context 安全，返回零值 + false。
+- **为什么现在是方法？** Go 1.27 起方法可以携带自己的类型参数。早先的包级助手 `gbl.Value[T](c, key)` / `gbl.MustValue[T](c, key)` 正是因为方法不能泛型才存在的，现已删除——直接用方法。
+- 类型不符也是 miss：
 
 ```go
-// 类型不符也是 miss：存的是 int64，按 string 取 → false
 c.Set("uid", int64(7))
-s, ok := gbl.Value[string](c, "uid") // "", false
+s, ok := c.Get[string]("uid") // "", false —— 存的是 int64
+v, ok := c.Get[any]("uid")    // int64(7), true —— 原样返回
 ```
 
 ## 完整场景：鉴权链路
@@ -67,13 +65,13 @@ gbl.Use(func(c *gbl.Context) {
 
 // 业务 handler：类型化读取，无断言
 gbl.Get("/profile", func(c *gbl.Context) Profile {
-    uid := gbl.MustValue[int64](c, "uid")
+    uid := c.Value[int64]("uid")
     return loadProfile(uid)
 })
 
-// 需要区分缺失的场景用 Value
+// 需要区分缺失的场景用 Get
 gbl.Get("/debug", func(c *gbl.Context) string {
-    if uid, ok := gbl.Value[int64](c, "uid"); ok {
+    if uid, ok := c.Get[int64]("uid"); ok {
         return fmt.Sprintf("uid=%d", uid)
     }
     return "no uid in context"
@@ -83,7 +81,7 @@ gbl.Get("/debug", func(c *gbl.Context) string {
 ## 使用建议
 
 - key 用常量集中定义，避免拼写漂移；
-- 存进去什么类型，取的时候就按什么类型——`Value` 不做任何转换；
+- 存进去什么类型，取的时候就按什么类型——`Get[T]` / `Value[T]` 不做任何转换；
 - 需要跨请求/异步使用的数据，先拷贝出来（Context 池化，见[Context 详解](/docs/context)）。
 
 下一章：[错误与 panic](/docs/errors)——严格错误策略的全部细节。
