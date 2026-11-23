@@ -22,7 +22,7 @@ See [Routing](/docs/routing), [Route Groups](/docs/groups).
 | Symbol | Signature | Description |
 |---|---|---|
 | `Run` | `func Run()` | start the single engine and block; signal-driven graceful shutdown; the engine serves once — a second Run panics |
-| `Shutdown` | `func Shutdown(ctx context.Context) error` | explicit graceful shutdown; idempotent, cross-goroutine safe; before Run returns `http.ErrServerClosed` |
+| `Shutdown` | `func Shutdown(ctx context.Context) error` | explicit graceful shutdown; repeatable, retryable after a failed attempt, cross-goroutine safe; before Run returns `http.ErrServerClosed` |
 | `Use` | `func Use(middleware ...HandlerFunc)` | append global middleware (register before Run) |
 
 > **The engine is read-only after Run.** Every assembling API — route registration, `Use` / `GroupUse`, `SetLogger`, `Configure`, `SetCorsConfig`, `RegisterPanicProcessor`, `SetMax*` — must be called **before** `Run`; calling one afterward panics with an explicit *"must be called before Run"* message instead of being silently swallowed.
@@ -38,7 +38,7 @@ See [Lifecycle](/docs/lifecycle), [Middleware](/docs/middleware).
 | `Context.Abort` / `Aborted` | abort the chain / query whether aborted |
 | `Context.AbortWithStatusString` / `AbortWithStatusJSON` | reject with plain text / JSON and abort |
 | `Context.PathParam` | read a path parameter by name (for middleware) |
-| `Context.Set` / `Get` | request-scoped key/value |
+| `Context.Set` / `Get[T]` / `Value[T]` | request-scoped key/value; generic typed reads |
 | `Context.Result` / `IsWritten` / `StatusCode` / `Size` | response-phase observation |
 | `HandlerFunc` | `type HandlerFunc func(c *Context)`, the middleware type |
 | `RouteGroup` | group interface: GroupUse + all verbs, each returning itself for chaining |
@@ -49,8 +49,10 @@ See [Context](/docs/context).
 
 | Symbol | Signature | Description |
 |---|---|---|
-| `Value` | `func Value[T any](c *Context, key string) (T, bool)` | typed read; missing/wrong type → zero value + false; nil-safe |
-| `MustValue` | `func MustValue[T any](c *Context, key string) T` | same, returning the value only |
+| `Context.Get[T]` | `func (c *Context) Get[T any](key string) (T, bool)` | generic-method typed read; missing/wrong type → zero value + false; nil-safe; `Get[any]` reads as-is |
+| `Context.Value[T]` | `func (c *Context) Value[T any](key string) T` | same, returning the value only |
+
+Since Go 1.27 methods may carry type parameters — the former package-level `Value` / `MustValue` helpers are removed.
 
 See [Request-scoped Values](/docs/values).
 
@@ -60,7 +62,7 @@ See [Request-scoped Values](/docs/values).
 |---|---|---|
 | `RegisterPanicProcessor` | `func RegisterPanicProcessor(p PanicProcessor)` | install a panic renderer that takes over rendering of every recovered value |
 | `PanicProcessor` | `type PanicProcessor func(err any) (any, HttpStatus)` | the renderer type |
-| `HttpStatus` | `type HttpStatus int` | the status type returned by renderers |
+| `HttpStatus` | `type HttpStatus int` | the status type returned by renderers; codes outside 100–999 are clamped to 500 |
 
 See [Errors & Panics](/docs/errors).
 
@@ -117,7 +119,7 @@ See [Compression](/docs/compression).
 | Symbol | Signature | Description |
 |---|---|---|
 | `Configure` | `func Configure(fn func(*Config))` | override configuration in code; fn receives the Config pre-filled with defaults; call before Run; nil is a no-op |
-| `Config` | struct (8 exported fields) | Name/Port/CertFile/KeyFile + four timeouts; TLS derived from the two paths |
+| `Config` | struct (7 exported fields) | Port/CertFile/KeyFile + four timeouts; TLS derived from the two paths |
 
 See [Configuration](/docs/configuration).
 
@@ -126,7 +128,6 @@ See [Configuration](/docs/configuration).
 | Item | Default |
 |---|---|
 | port | 9801 |
-| application name | gbl |
 | readTimeout / readHeaderTimeout / writeTimeout / idleTimeout | 10s / 5s / 10s / 60s |
 | total body / memory threshold / per file | 5 MiB / 2 MiB / 1 MiB |
 | signal shutdown window | 5s |

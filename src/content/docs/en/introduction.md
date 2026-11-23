@@ -67,7 +67,7 @@ Route conflicts, invalid path syntax, invalid configuration, unrecoverable param
 | Routing | 7 HTTP verbs, `:name` and `{name}` path parameters, static-first matching, automatic HEAD/OPTIONS fallback, route groups |
 | Binding | Path/query/form/JSON/multipart bound automatically by type + name; scalars, pointers, slices, arrays, nested structs |
 | Middleware | Onion model, `c.Next()` request/response phases, group scope, one-step interception with `Abort` |
-| Context | Pooled `Context`, request-scoped key/value, generic accessors `Value[T]` / `MustValue[T]` |
+| Context | Pooled `Context`, request-scoped key/value, generic method accessors `Get[T]` / `Value[T]` |
 | Validation | `Validatable` interface, checked after binding and before the handler |
 | Errors | `Abort` / `PanicProcessor` / generic 500 fallback, zero leakage of internal details |
 | Logging | Structured `Logger` interface, private colored console, any backend via `SetLogger`, package-level `Info/Warn/Error`, startup banner |
@@ -81,7 +81,7 @@ Route conflicts, invalid path syntax, invalid configuration, unrecoverable param
 
 - **Go 1.27+** (`go.mod` declares `go 1.27`)
 - No third-party dependencies — `go get github.com/gblgo/gbl` is all you need
-- Handlers bound by name require the source code to be readable at runtime (see the `-trimpath` notes in [Deployment & Builds](/docs/deployment))
+- Handlers bound by name rely on two-level parameter-name recovery: source on disk or the binary's own DWARF; ordinary builds (including `-trimpath` and images copying only the binary) work as-is — only `-ldflags "-w"/"-s"` stripping debug info is restricted (see [Deployment & Builds](/docs/deployment))
 
 ## Where to go next
 

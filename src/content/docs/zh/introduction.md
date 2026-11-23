@@ -67,7 +67,7 @@ GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用�
 | 路由 | 7 种 HTTP 动词、`:name` 与 `{name}` 路径参数、静态优先匹配、HEAD/OPTIONS 自动兜底、路由分组 |
 | 装配 | 路径/query/form/JSON/multipart 按类型+名字自动绑定，支持标量、指针、切片、数组、嵌套结构体 |
 | 中间件 | 洋葱模型、`c.Next()` 请求/响应两阶段、分组作用域、`Abort` 一步拦截 |
-| 上下文 | 池化 `Context`、请求级 key/value、泛型取值 `Value[T]` / `MustValue[T]` |
+| 上下文 | 池化 `Context`、请求级 key/value、泛型方法取值 `Get[T]` / `Value[T]` |
 | 校验 | `Validatable` 接口，装配后 handler 前自动校验 |
 | 错误 | `Abort` / `PanicProcessor` / 通用 500 兜底，内部细节零泄漏 |
 | 日志 | 结构化 `Logger` 接口、私有彩色控制台、`SetLogger` 接入任意后端、包级 `Info/Warn/Error`、启动横幅 |
@@ -81,7 +81,7 @@ GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用�
 
 - **Go 1.27+**（`go.mod` 声明 `go 1.27`）
 - 无第三方依赖，`go get github.com/gblgo/gbl` 即可
-- 按名字绑定的 handler 需要运行时能读到源码（详见[部署与构建](/docs/deployment)中的 `-trimpath` 说明）
+- 按名字绑定的 handler 依赖参数名两级恢复：磁盘源码或二进制自带的 DWARF；普通构建（含 `-trimpath`、只拷贝二进制的镜像）直接可用，仅 `-ldflags "-w"/"-s"` 剥除调试信息时受限（详见[部署与构建](/docs/deployment)）
 
 ## 接下来读什么
 

@@ -22,7 +22,7 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | 符号 | 签名 | 说明 |
 |---|---|---|
 | `Run` | `func Run()` | 启动唯一引擎并阻塞；信号优雅停机；引擎只服务一次，重复调用 panic |
-| `Shutdown` | `func Shutdown(ctx context.Context) error` | 主动优雅停机；幂等、跨 goroutine 安全；Run 前调用返回 `http.ErrServerClosed` |
+| `Shutdown` | `func Shutdown(ctx context.Context) error` | 主动优雅停机；重复调用安全、失败可重试，跨 goroutine；Run 前调用返回 `http.ErrServerClosed` |
 | `Use` | `func Use(middleware ...HandlerFunc)` | 追加全局中间件（Run 前注册） |
 
 > **Run 之后引擎只读。** 所有装配 API——路由注册、`Use` / `GroupUse`、`SetLogger`、`Configure`、`SetCorsConfig`、`RegisterPanicProcessor`、`SetMax*`——必须在 `Run` 之前调用；之后再调会 panic 并给出 *"must be called before Run"* 提示，而不是被悄悄吞掉。
@@ -38,7 +38,7 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | `Context.Abort` / `Aborted` | 中断链 / 查询是否中断 |
 | `Context.AbortWithStatusString` / `AbortWithStatusJSON` | 以纯文本 / JSON 拒绝并中断 |
 | `Context.PathParam` | 按名取路径参数（中间件用） |
-| `Context.Set` / `Get` | 请求级 key/value |
+| `Context.Set` / `Get[T]` / `Value[T]` | 请求级 key/value；泛型方法类型化读取 |
 | `Context.Result` / `IsWritten` / `StatusCode` / `Size` | 响应阶段观察 |
 | `HandlerFunc` | `type HandlerFunc func(c *Context)`，中间件类型 |
 | `RouteGroup` | 分组接口：GroupUse + 全部动词，均返回自身可链式 |
@@ -49,8 +49,10 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `Value` | `func Value[T any](c *Context, key string) (T, bool)` | 类型化读取；缺失/类型不符 → 零值+false；nil 安全 |
-| `MustValue` | `func MustValue[T any](c *Context, key string) T` | 同上，只返回值 |
+| `Context.Get[T]` | `func (c *Context) Get[T any](key string) (T, bool)` | 泛型方法类型化读取；缺失/类型不符 → 零值+false；nil 安全；`Get[any]` 原样取值 |
+| `Context.Value[T]` | `func (c *Context) Value[T any](key string) T` | 同上，只返回值 |
+
+Go 1.27 起方法可携带类型参数——旧包级助手 `Value` / `MustValue` 已随之删除。
 
 详见[请求级取值](/docs/values)。
 
@@ -60,7 +62,7 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 |---|---|---|
 | `RegisterPanicProcessor` | `func RegisterPanicProcessor(p PanicProcessor)` | 安装 panic 渲染器，接管一切被恢复值的渲染 |
 | `PanicProcessor` | `type PanicProcessor func(err any) (any, HttpStatus)` | 渲染器类型 |
-| `HttpStatus` | `type HttpStatus int` | 渲染器返回的状态码类型 |
+| `HttpStatus` | `type HttpStatus int` | 渲染器返回的状态码类型；超出 100–999 钳制为 500 |
 
 详见[错误与 panic](/docs/errors)。
 
@@ -117,7 +119,7 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | 符号 | 签名 | 说明 |
 |---|---|---|
 | `Configure` | `func Configure(fn func(*Config))` | 代码覆盖配置；fn 拿到已填默认值的 Config；Run 前调用；nil 空操作 |
-| `Config` | 结构体（8 个导出字段） | Name/Port/CertFile/KeyFile + 四个超时；TLS 由双路径自动推导 |
+| `Config` | 结构体（7 个导出字段） | Port/CertFile/KeyFile + 四个超时；TLS 由双路径自动推导 |
 
 详见[配置](/docs/configuration)。
 
@@ -126,7 +128,6 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | 项 | 默认 |
 |---|---|
 | 端口 | 9801 |
-| 应用名 | gbl |
 | readTimeout / readHeaderTimeout / writeTimeout / idleTimeout | 10s / 5s / 10s / 60s |
 | 总 body / 内存阈值 / 单文件 | 5 MiB / 2 MiB / 1 MiB |
 | 信号停机窗口 | 5s |

@@ -12,7 +12,7 @@ Registration only queues; `generateRoute` at `Run()` does all the heavy lifting 
 | exportable field lists of struct parameters (index + name + type) | no per-request field introspection or CanSet checks |
 | the `needsParse` flag | handlers binding no business values skip body/query parsing entirely |
 | the return Content-Type | no per-request serialization-format decisions |
-| parameter names (AST recovery) | each source file parsed once; the AST cache is released after startup |
+| parameter names (source AST → binary DWARF, two-level recovery) | each source file's syntax tree is walked once: every function's line span is collected into an index that handlers resolve against; the production path reads the binary's own DWARF directly |
 | middleware chains (global + group + terminal) | one frozen slice per route, reused directly at request time |
 
 ## Object pools: reuse everything reusable
@@ -30,6 +30,12 @@ Registration only queues; `generateRoute` at `Run()` does all the heavy lifting 
 | `responseBufferPool` | response write buffer (serialized results land here before being written out) |
 
 Pooling saves not just allocations but GC pressure — especially visible under high concurrency. Every pooled object is cleared of references before return, so no previous request's data stays pinned in memory or leaks into the next request.
+
+## Per-request parsing: touch each piece of data once
+
+- the URL query is parsed exactly once per request — urlencoded body decoding no longer re-parses the query on the side;
+- the JSON "is the body empty" check is folded into parameter parsing, so binding performs no second body scan;
+- the compression middleware's output buffer reuses `responseBufferPool` — a compressed response makes zero fresh allocations.
 
 ## Route matching: zero-allocation hot path
 
