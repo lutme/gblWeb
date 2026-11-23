@@ -64,15 +64,16 @@ if err := gbl.Shutdown(ctx); err != nil {
 }
 ```
 
-- 可重复调用（内部 once 收敛）；
+- 可重复调用：只有成功才落锁，**失败的停机可以重试**（ctx 到期时服务仍在监听）；
 - 可从**不同于 Run** 的 goroutine 调用；
-- 在 `Run` 之前调用返回 `http.ErrServerClosed`。
+- 在 `Run` 之前调用返回 `http.ErrServerClosed`；
+- 信号路径收尾窗口耗尽时会记一条 WARN，不静默吞掉。
 
 > `Run` 已自带信号优雅停机；当你需要**主动**触发（健康检查 kill 开关、测试、嵌入）时才用 `Shutdown`。
 
 ## 启动失败（fail-fast）
 
-所有启动、配置、注册类失败都是 fail-fast：先经引擎 Logger 记录原因，再 panic——还没开始服务就挂掉的部署，也会在你的日志 sink 里留下原因，而不只是一条裸栈。端口占用、路由冲突、危险的 CORS 策略都走这条路。
+所有启动、配置、注册类失败都是 fail-fast：先经引擎 Logger 记录原因，再 panic——还没开始服务就挂掉的部署，也会在你的日志 sink 里留下原因，而不只是一条裸栈。端口占用、路由冲突、危险的 CORS 策略、`-ldflags "-w"/"-s"` 剥除 DWARF 后按名字装配的 handler（见[部署与构建](/docs/deployment)）都走这条路。
 
 ```text
 2026/11/19 10:00:00 ERROR startup aborted reason=listen tcp :9801: bind: address already in use

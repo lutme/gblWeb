@@ -67,15 +67,16 @@ if err := gbl.Shutdown(ctx); err != nil {
 }
 ```
 
-- Repeatable calls (converged internally via once);
+- Repeatable: success alone latches, so a **failed shutdown can be retried** (the server is still listening when ctx expires);
 - callable from a goroutine **other than Run's**;
-- called before `Run`, it returns `http.ErrServerClosed`.
+- called before `Run`, it returns `http.ErrServerClosed`;
+- a signal-path drain that exhausts its window is logged as a WARN, never swallowed.
 
 > `Run` already handles signal-driven graceful shutdown; use `Shutdown` only when you need to trigger it *explicitly* (health-check kill switches, tests, embedding).
 
 ## Startup failure (fail-fast)
 
-All startup, configuration and registration failures are fail-fast: the reason is logged through the engine Logger first, then the process panics — a deployment that dies before serving still leaves the reason in your log sink, not just a bare stack. A busy port, a route conflict and a dangerous CORS policy all take this path.
+All startup, configuration and registration failures are fail-fast: the reason is logged through the engine Logger first, then the process panics — a deployment that dies before serving still leaves the reason in your log sink, not just a bare stack. A busy port, a route conflict, a dangerous CORS policy and a name-binding handler whose DWARF was stripped by `-ldflags "-w"/"-s"` (see [Deployment & Builds](/docs/deployment)) all take this path.
 
 ```text
 2026/11/19 10:00:00 ERROR startup aborted reason=listen tcp :9801: bind: address already in use

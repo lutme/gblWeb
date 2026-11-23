@@ -4,7 +4,7 @@
 func SetCorsConfig(cc *CorsConfig) // pass nil to disable CORS
 ```
 
-`SetCorsConfig` installs the cross-origin policy on the engine; `Run` then wraps the handler chain with it — preflights, origin/method/header matching, credentials and max-age.
+`SetCorsConfig` installs the cross-origin policy on the engine; `Run` then wraps the handler chain with it — preflights, origin/method/header matching, credentials and max-age. What the engine keeps is a **private deep copy** of your struct (all four slices cloned): later edits to the caller's struct can neither race the serving goroutines nor switch the policy mid-flight.
 
 ## CorsConfig
 

@@ -10,7 +10,7 @@
 2. 响应 `Content-Type` 可压缩——`text/*` 全类，以及 JSON、XML、CSS、JS、SVG、RSS/Atom 等文本格式；图片、视频、音频、PDF 等二进制类型永不压缩（已压缩过或 gzip 无收益）；
 3. 响应体至少 **1 KB**——更小的响应压缩收益甚微，CPU 开销不值。
 
-命中后：暂存 body 被替换为压缩数据，并设置 `Content-Encoding: gzip` 与 `Vary: Accept-Encoding`（对共享缓存友好）。
+命中后：暂存 body 被替换为压缩数据，并设置 `Content-Encoding: gzip` 与 `Vary: Accept-Encoding`（对共享缓存友好）。压缩输出缓冲来自 `responseBufferPool`——压缩一个响应不产生新分配。
 
 ## 压缩级别
 
@@ -62,6 +62,7 @@ gbl.Use(
 ## 什么不会被压缩
 
 - **已写出的响应**：handler 声明注入的 `http.ResponseWriter` 自己写的、或 `Abort` 系列写出的拒绝响应——body 已上线，中间件不碰；
+- **已带 `Content-Encoding` 的响应**：全局 + 分组叠加安装多层 Compress 时，只有最先拿到结果的一层真正压缩，外层看到编码头已设置就直接放行——不会二次压缩；
 - **没有暂存结果的请求**：handler 无返回值，或链路被 `c.Abort()` 中断在 handler 之前；
 - 不满足三条件的：客户端不支持 gzip、二进制类型、body 不足 1 KB。
 

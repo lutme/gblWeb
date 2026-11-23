@@ -10,7 +10,7 @@ All three must hold, otherwise the response passes through untouched:
 2. the response `Content-Type` is compressible — every `text/*` type plus JSON, XML, CSS, JS, SVG, RSS/Atom; binary types (images, video, audio, PDF) are never compressed (already compressed, or gzip gains nothing);
 3. the body is at least **1 KB** — smaller bodies gain little and the CPU cost is not worth it.
 
-On a hit: the staged body is replaced with the compressed data, and `Content-Encoding: gzip` plus `Vary: Accept-Encoding` are set (shared-cache friendly).
+On a hit: the staged body is replaced with the compressed data, and `Content-Encoding: gzip` plus `Vary: Accept-Encoding` are set (shared-cache friendly). The compression output buffer comes from `responseBufferPool` — compressing a response makes no fresh allocation.
 
 ## Compression levels
 
@@ -62,6 +62,7 @@ gbl.Use(
 ## What never gets compressed
 
 - **already-written responses**: a handler writing through an injected `http.ResponseWriter`, or a rejection written by the `Abort` family — the body is on the wire, the middleware does not touch it;
+- **responses that already carry `Content-Encoding`**: with Compress stacked at several layers (global plus group), only the layer that sees the result first actually compresses; outer layers see the encoding header set and pass through — never a double deflate;
 - **requests with no staged result**: the handler returns nothing, or the chain was stopped by `c.Abort()` before the handler;
 - anything failing the three conditions: no gzip in `Accept-Encoding`, binary content type, body under 1 KB.
 

@@ -4,7 +4,7 @@
 func SetCorsConfig(cc *CorsConfig) // 传 nil 关闭 CORS
 ```
 
-`SetCorsConfig` 在引擎上安装跨域策略，`Run` 随后用它包裹处理链——预检、来源/方法/头匹配、凭据与 max-age。
+`SetCorsConfig` 在引擎上安装跨域策略，`Run` 随后用它包裹处理链——预检、来源/方法/头匹配、凭据与 max-age。引擎保存的是你那份结构体的**私有深拷贝**（四个切片一并克隆）：之后再改调用方的结构体，既不会与运行中的服务产生数据竞争，也不会中途切换策略。
 
 ## CorsConfig
 

@@ -42,7 +42,7 @@ type PanicProcessor func(err any) (any, HttpStatus)
 type HttpStatus int
 ```
 
-`RegisterPanicProcessor(p)` installs your panic renderer on the engine. **Once registered, it renders every recovered value** — explicit aborts *and* real crashes alike. You therefore take full responsibility for "never leak internal errors":
+`RegisterPanicProcessor(p)` installs your panic renderer on the engine. **Once registered, it renders every recovered value** — explicit aborts *and* real crashes alike. You therefore take full responsibility for "never leak internal errors". The `HttpStatus` you return is validated: codes outside 100–999 are clamped to 500 — the hook is your code, so the framework never lets the recovery path panic a second time:
 
 ```go
 gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {

@@ -42,7 +42,7 @@ type PanicProcessor func(err any) (any, HttpStatus)
 type HttpStatus int
 ```
 
-`RegisterPanicProcessor(p)` 在引擎上安装你的 panic 渲染器。**一旦注册，它就接管所有被恢复值的渲染**——显式中止和真实崩溃都归它。因此你要为"不泄露内部错误"负全责：
+`RegisterPanicProcessor(p)` 在引擎上安装你的 panic 渲染器。**一旦注册，它就接管所有被恢复值的渲染**——显式中止和真实崩溃都归它。因此你要为"不泄露内部错误"负全责。返回的 `HttpStatus` 会被校验：超出 100–999 的状态码一律钳制为 500——渲染钩子是你写的代码，框架不信任它，绝不让恢复路径自己再 panic 第二次：
 
 ```go
 gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {
