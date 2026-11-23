@@ -102,7 +102,7 @@ watch(locale, async () => {
     <div class="header-inner container">
       <a class="brand" href="/" aria-label="GBL home" @click.prevent="goHome">
         <span class="brand-mark" aria-hidden="true">
-          <img src="/logo.png" width="30" height="30" alt="" />
+          <img src="/logo.png" width="50" height="50" alt="" />
         </span>
         <span class="brand-name">GBL</span>
         <span class="brand-divider" aria-hidden="true"></span>
