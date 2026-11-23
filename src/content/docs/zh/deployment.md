@@ -33,7 +33,9 @@ binary, or bind through a struct / *struct parameter whose field names come
 from reflection
 ```
 
-两条出路：
+动手剥之前先想清楚这两个 flag 如今还能给你什么：panic 堆栈和 `pprof` 的符号化来自一张它们碰不到的调用表；「隐藏内部信息」更是错觉——函数名和类型字符串怎样都留在二进制里。剩下的只有约三成的体积缩减：常驻服务很少为几兆字节讨价还价，而损失会立刻落在按名字装配的 handler 头上。GBL 应用的构建脚本没有理由带上这两个 flag。
+
+真有部署环境非剥不可，两条出路：
 
 - **去掉 `-w` / `-s`**，保留 DWARF——这是推荐做法，体积增量通常可以接受；
 - **改用 `struct` / `*struct` 参数装配**——字段名来自反射而非 DWARF，无论用什么构建 flag 都保留：

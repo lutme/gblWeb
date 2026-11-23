@@ -33,7 +33,9 @@ binary, or bind through a struct / *struct parameter whose field names come
 from reflection
 ```
 
-Two ways out:
+Before stripping, think about what these two flags still buy you today: panic stacks and `pprof` symbolization come from a call table the flags never touch, and "hiding internals" is an illusion — function names and type strings stay in the binary regardless. All that remains is roughly a 30% size cut: a long-running service rarely haggles over a few megabytes, and the cost lands squarely on handlers that bind by name. A GBL app's build script has no reason to carry these flags.
+
+If your deployment environment truly cannot ship debug info, two ways out:
 
 - **drop `-w` / `-s`** and keep DWARF — the recommended fix; the size increase is usually acceptable;
 - **bind through a `struct` / `*struct` parameter** — field names come from reflection, not DWARF, and survive any build flag:
