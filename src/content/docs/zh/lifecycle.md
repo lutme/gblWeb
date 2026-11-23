@@ -73,7 +73,7 @@ if err := gbl.Shutdown(ctx); err != nil {
 
 ## 启动失败（fail-fast）
 
-所有启动、配置、注册类失败都是 fail-fast：先经引擎 Logger 记录原因，再 panic——还没开始服务就挂掉的部署，也会在你的日志 sink 里留下原因，而不只是一条裸栈。端口占用、路由冲突、危险的 CORS 策略、`-ldflags "-w"/"-s"` 剥除 DWARF 后按名字装配的 handler（见[部署与构建](/docs/deployment)）都走这条路。
+所有启动、配置、注册类失败都是 fail-fast：先经引擎 Logger 记录原因，再 panic——还没开始服务就挂掉的部署，也会在你的日志 sink 里留下原因，而不只是一条裸栈。端口占用、路由冲突、危险的 CORS 策略、不支持的 handler 形态（方法值/泛型实例化，见 [Handler 与参数装配](/docs/handlers)）、`-ldflags "-w"/"-s"` 剥除 DWARF 后按名字装配的 handler（见[部署与构建](/docs/deployment)）都走这条路。
 
 ```text
 2026/11/19 10:00:00 ERROR startup aborted reason=listen tcp :9801: bind: address already in use

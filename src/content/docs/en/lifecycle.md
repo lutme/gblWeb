@@ -76,7 +76,7 @@ if err := gbl.Shutdown(ctx); err != nil {
 
 ## Startup failure (fail-fast)
 
-All startup, configuration and registration failures are fail-fast: the reason is logged through the engine Logger first, then the process panics — a deployment that dies before serving still leaves the reason in your log sink, not just a bare stack. A busy port, a route conflict, a dangerous CORS policy and a name-binding handler whose DWARF was stripped by `-ldflags "-w"/"-s"` (see [Deployment & Builds](/docs/deployment)) all take this path.
+All startup, configuration and registration failures are fail-fast: the reason is logged through the engine Logger first, then the process panics — a deployment that dies before serving still leaves the reason in your log sink, not just a bare stack. A busy port, a route conflict, a dangerous CORS policy, an unsupported handler shape (method value / generic instantiation, see [Handlers & Binding](/docs/handlers)) and a name-binding handler whose DWARF was stripped by `-ldflags "-w"/"-s"` (see [Deployment & Builds](/docs/deployment)) all take this path.
 
 ```text
 2026/11/19 10:00:00 ERROR startup aborted reason=listen tcp :9801: bind: address already in use
