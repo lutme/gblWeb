@@ -12,7 +12,6 @@ func Configure(fn func(*Config))
 
 ```go
 gbl.Configure(func(c *gbl.Config) {
-    c.Name = "myapp"
     c.Port = "8080"
     c.ReadTimeout = 5 * time.Second
 })
@@ -31,7 +30,6 @@ import (
 
 func main() {
     gbl.Configure(func(c *gbl.Config) {
-        c.Name = "myapp"
         c.Port = "9802"
 
         // TLS is enabled when both CertFile and KeyFile are set
@@ -53,7 +51,6 @@ func main() {
 
 ```go
 type Config struct {
-    Name              string        // application name
     Port              string        // listen port, without the leading colon
     CertFile          string        // TLS certificate file path
     KeyFile           string        // TLS private key file path
@@ -66,7 +63,6 @@ type Config struct {
 
 | Field | Default | Meaning |
 |---|---|---|
-| `Name` | `gbl` | application name |
 | `Port` | `9801` | listen port |
 | `CertFile` / `KeyFile` | empty | both set ⇒ HTTPS enabled; only one does nothing |
 | `ReadTimeout` | `10s` | max duration to read an entire request |

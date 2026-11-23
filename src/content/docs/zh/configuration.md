@@ -12,7 +12,6 @@ func Configure(fn func(*Config))
 
 ```go
 gbl.Configure(func(c *gbl.Config) {
-    c.Name = "myapp"
     c.Port = "8080"
     c.ReadTimeout = 5 * time.Second
 })
@@ -31,7 +30,6 @@ import (
 
 func main() {
     gbl.Configure(func(c *gbl.Config) {
-        c.Name = "myapp"
         c.Port = "9802"
 
         // CertFile 与 KeyFile 同时给出则启用 TLS
@@ -53,7 +51,6 @@ func main() {
 
 ```go
 type Config struct {
-    Name              string        // 应用名
     Port              string        // 监听端口，不带前导冒号
     CertFile          string        // TLS 证书文件路径
     KeyFile           string        // TLS 私钥文件路径
@@ -66,7 +63,6 @@ type Config struct {
 
 | 字段 | 默认 | 含义 |
 |---|---|---|
-| `Name` | `gbl` | 应用名 |
 | `Port` | `9801` | 监听端口 |
 | `CertFile` / `KeyFile` | 空 | 两者都给 ⇒ 启用 HTTPS；只给一个不启用 |
 | `ReadTimeout` | `10s` | 读取整个请求的最长时间 |

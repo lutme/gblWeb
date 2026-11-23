@@ -124,7 +124,6 @@ curl -X POST http://localhost:9801/user \
 
 ```go
 gbl.Configure(func(c *gbl.Config) {
-    c.Name = "myapp"
     c.Port = "9802"
 
     // CertFile 与 KeyFile 同时给出则启用 HTTPS

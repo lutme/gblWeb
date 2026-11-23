@@ -124,7 +124,6 @@ Without configuration everything uses defaults. To change the port, enable TLS o
 
 ```go
 gbl.Configure(func(c *gbl.Config) {
-    c.Name = "myapp"
     c.Port = "9802"
 
     // HTTPS is enabled when CertFile and KeyFile are both present
