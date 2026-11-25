@@ -145,8 +145,8 @@ export default {
     title: 'Go deep into every detail',
     sub: 'Complete bilingual docs: from every binding rule to the -trimpath deployment trap — all derived from the source, with examples throughout.',
     cards: {
-      guide: { title: 'Start & Core', desc: 'Getting started · Binding · Routing · Groups · Middleware · Context' },
-      robust: { title: 'Robustness', desc: 'Error policy · Validation · Upload limits · CORS security policy' },
+      guide: { title: 'Start & Core', desc: 'Getting started · Binding · ResponseWriter · Routing · Groups · Middleware · Context' },
+      robust: { title: 'Robustness', desc: 'Error policy · Validation · SSE streams · Upload limits · CORS security policy' },
       ops: { title: 'Ops & Deployment', desc: 'Logging · Config · Lifecycle · Deployment traps · Performance · API reference' },
     },
     enter: 'Enter the Docs',

@@ -22,7 +22,7 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 | 符号 | 签名 | 说明 |
 |---|---|---|
 | `Run` | `func Run()` | 启动唯一引擎并阻塞；信号优雅停机；引擎只服务一次，重复调用 panic |
-| `Shutdown` | `func Shutdown(ctx context.Context) error` | 主动优雅停机；重复调用安全、失败可重试，跨 goroutine；Run 前调用返回 `http.ErrServerClosed` |
+| `Shutdown` | `func Shutdown(ctx context.Context) error` | 先取消 SSE，再关闭监听并等待在途请求；成功后关闭跟踪的 Hijack 连接；超时保留剩余连接且可重试；Run 前调用返回 `http.ErrServerClosed` |
 | `Use` | `func Use(middleware ...HandlerFunc)` | 追加全局中间件（Run 前注册） |
 
 > **Run 之后引擎只读。** 所有装配 API——路由注册、`Use` / `GroupUse`、`SetLogger`、`Configure`、`SetCorsConfig`、`RegisterPanicProcessor`、`SetMax*`——必须在 `Run` 之前调用；之后再调会 panic 并给出 *"must be called before Run"* 提示，而不是被悄悄吞掉。
@@ -45,11 +45,22 @@ GBL 的全部导出符号速查。每个符号的详解与示例见对应章节�
 
 详见[Context 详解](/docs/context)。
 
+## 响应控制
+
+| 符号/能力 | 说明 |
+|---|---|
+| `http.ResponseWriter` 参数 | 注入包装写入器；支持状态码、直接 body、Flush、Hijack 和 Push |
+| `http.NewResponseController` | 推荐用于 Flush、Hijack、读写超时和全双工控制；不支持的能力返回 `http.ErrNotSupported` |
+| `Unwrap() http.ResponseWriter` | 包装器暴露给 `ResponseController` 的转发入口，用于寻找底层能力 |
+| `http.Flusher` / `http.Hijacker` / `http.Pusher` | 可按标准接口断言；实际支持取决于底层 writer |
+
+包装器类型本身未导出，但注入值满足这些标准接口。详见[ResponseWriter 进阶](/docs/response-writer)。
+
 ## 请求级取值
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `Context.Get[T]` | `func (c *Context) Get[T any](key string) (T, bool)` | 泛型方法类型化读取；缺失/类型不符 → 零值+false；nil 安全；`Get[any]` 原样取值 |
+| `Context.Get[T]` | `func (c *Context) Get[T any](key string) (T, bool)` | 泛型方法类型化读取；缺失/类型不符 → 零值+false；nil 安全；显式 nil 用 `Get[any]` 读取为 `(nil, true)` |
 | `Context.Value[T]` | `func (c *Context) Value[T any](key string) T` | 同上，只返回值 |
 
 Go 1.27 起方法可携带类型参数——旧包级助手 `Value` / `MustValue` 已随之删除。
@@ -70,9 +81,17 @@ Go 1.27 起方法可携带类型参数——旧包级助手 `Value` / `MustValue
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `Validatable` | `interface { Validate() error }` | 业务参数实现即自动校验（装配后、handler 前） |
+| `Validatable` | `interface { Validate() error }` | 业务参数实现即自动校验（装配后、handler 前）；nil 指针跳过；多参数 JSON 缺字段先使用零值 |
 
 详见[参数校验](/docs/validation)。
+
+## SSE
+
+| 符号 | 签名 | 说明 |
+|---|---|---|
+| `SSEWriter` | `interface { Send(any) error; Done() <-chan struct{}; OnError(func(error)); OnComplete(func()) }` | GET 路由的流式写入器；自动管理响应头、Flush、心跳、写超时和取消 |
+
+SSE handler 不能有返回值。绑定和校验在流启动前完成；第一次运行时流失败默认记录日志，生命周期回调可选。详见[SSE 实时流](/docs/sse)。
 
 ## 上传限额
 
@@ -109,7 +128,7 @@ Go 1.27 起方法可携带类型参数——旧包级助手 `Value` / `MustValue
 
 | 符号 | 签名 | 说明 |
 |---|---|---|
-| `Compress` | `func Compress(level int) HandlerFunc` | gzip 响应压缩中间件；Accept-Encoding / 可压缩类型 / 1 KB 三条件判定 |
+| `Compress` | `func Compress(level int) HandlerFunc` | gzip 响应压缩中间件；Accept-Encoding / 可压缩类型 / 1 KB 三条件判定；尊重 `q=0`，所有经过的有效实例添加 `Vary: Accept-Encoding` |
 | `NoCompression` / `BestSpeed` / `DefaultCompression` / `BestCompression` / `HuffmanOnly` | `const`（= `compress/gzip` 对应值） | 压缩级别常量，重新导出免 import |
 
 详见[响应压缩](/docs/compression)。

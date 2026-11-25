@@ -35,7 +35,7 @@ Response
 
 **`c.Next()` executes every ring after the current one** (the remaining middleware, finally the handler), then returns. So the code before `c.Next()` is the **request phase** and the code after it is the **response phase**. Both phases are code you write yourself inside the middleware function, with the `c.Next()` line as the boundary.
 
-The handler is the innermost business function: it has no phases and never calls `Next()`. The framework waits for the entire chain to unwind before writing the stashed body to the connection — so timing around `Next()` measures the complete request-processing duration, and access logs belong in this phase because the result and status code are final by then.
+The handler is the innermost business function: it has no phases and never calls `Next()`. The normal return-value path waits for the entire chain to unwind before automatic writeback, so timing around `Next()` measures request-processing duration; direct Write, Flush, SSE and Hijack commit earlier. An outermost access log reads the final status after full unwinding.
 
 `Next()` is an ordinary blocking call: it runs all downstream rings synchronously before returning. All nested `Next` calls share one cursor; no ring ever executes twice.
 
@@ -147,7 +147,7 @@ gbl.Use(func(c *gbl.Context) {
 
 ### Reading results in the response phase
 
-After the handler runs, the stashed result has not been written back yet — middleware can read the final status and return value at this point:
+After the handler runs, a normal return value is usually still staged — middleware can read the current effective status and return value; direct Write, Flush, SSE or Hijack may already have committed:
 
 ```go
 gbl.Use(func(c *gbl.Context) {
@@ -158,7 +158,7 @@ gbl.Use(func(c *gbl.Context) {
 })
 ```
 
-`c.Result()` returns the handler's raw return value (boxed only on first read); `c.IsWritten()` tells whether the body has been committed. Middleware has **no API to rewrite the stashed body** — to write a response yourself, use `AbortWithStatusString` / `AbortWithStatusJSON` (they write the body and stop the chain), or declare an `http.ResponseWriter` parameter in the handler for full control.
+`c.Result()` returns the handler's raw return value (boxed only on first read); `c.IsWritten()` tells whether `Write` was called, including a zero-length write, while `WriteHeader` / `Flush` alone do not count. Middleware has **no API to rewrite the stashed body** — to write a response yourself, use `AbortWithStatusString` / `AbortWithStatusJSON` (they write the body and stop the chain), or declare an `http.ResponseWriter` parameter in the handler for full control.
 
 ### Access log (install your own)
 
@@ -179,11 +179,11 @@ From arrival to the response reaching the client:
 
 1. **Accept and dispatch.** `net/http` accepts the connection, parses the request and calls the engine; with CORS configured, it is the `corsHandler` wrapping the engine.
 2. **CORS (only when configured).** Checks `Origin`: preflights are answered directly; allowed origins get CORS headers; no `Origin` goes straight into the engine.
-3. **Method and route matching.** Unknown verb → 501; match in that method's routing tree and fill path parameters; unregistered HEAD borrows GET; no match → 404 or 405 + Allow (OPTIONS gets 204).
+3. **Method and route matching.** Unknown verb → 501; probe the method's static map first, then enter the dynamic tree and fill path parameters on a miss; unregistered HEAD borrows GET; no match → 404 or 405 + Allow (OPTIONS gets 204).
 4. **Build the Context.** Take a `Context` from the pool, load the request, path parameters, this route's frozen chain and the logger.
 5. **Execute the chain.** `c.Next()` drives down to the terminal `routeEndpoint`, which calls `invokeHandler()`: parse → bind → validate → invoke the handler via reflection → serialize and stash.
-6. **Write the response.** If anyone already wrote a body, that stands; otherwise write the stashed result with the Content-Type chosen at registration, flushing the recorded status code first (default 200).
+6. **Write the response.** After direct `Write` or Hijack, the application's response stands; the normal return-value path writes back after the chain unwinds, preserving the recorded status (default 200), while 204/304/101 suppress the body. The provisional Content-Type is already set and may still be refined before commit.
 7. **Clean up.** Remove multipart temp files; reset the Context, path-parameter map and response writer and return them to their pools.
-8. **Any panic** is recovered and rendered: an explicit abort (the `Abort` family) reaches the client verbatim; a registered PanicProcessor takes over; anything else is logged and answered with a generic 500.
+8. **Any panic** is recovered: while the response is uncommitted and not hijacked, explicit aborts reach the client verbatim, a registered PanicProcessor takes over, and other panics are logged with a generic 500; after commit only unexpected panics are logged and the answer is not rewritten.
 
 Next: [Context](/docs/context) — the single data carrier along the chain.

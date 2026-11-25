@@ -1,78 +1,75 @@
 # Performance
 
-GBL's hot path is systematically optimized. This chapter explains **what was done and why**, and how to run the benchmarks yourself.
+GBL's hot path is systematically optimized. This chapter explains **what was done and why**, and how to run credible comparisons in your own project.
 
-## Startup precomputation: zero per-request decisions
+## Startup precomputation
 
-Registration only queues; `generateRoute` at `Run()` does all the heavy lifting once:
+Registration only queues; `generateRoute` at `Run()` does the heavy lifting once:
 
 | Precomputed item | Work saved per request |
 |---|---|
-| each parameter's binding category (injected / file / business) | no per-request reflective type classification or interface-satisfaction probing |
-| exportable field lists of struct parameters (index + name + type) | no per-request field introspection or CanSet checks |
-| the `needsParse` flag | handlers binding no business values skip body/query parsing entirely |
-| the return Content-Type | no per-request serialization-format decisions |
-| parameter names (source AST → binary DWARF, two-level recovery) | each source file's syntax tree is walked once: every function's line span is collected into an index that handlers resolve against; the production path reads the binary's own DWARF directly |
-| middleware chains (global + group + terminal) | one frozen slice per route, reused directly at request time |
+| each parameter's binding category (injected / SSE / file / business) | no per-request reflective type classification or interface-satisfaction probing |
+| exported struct-field lists (index + name + type) | no per-request field introspection or CanSet checks |
+| `needsParse` and exact query-key lists | handlers without business or file parameters skip parsing; multi-key queries decode only bindable names |
+| provisional return Content-Type | available before an early Flush; runtime serialization may still refine it while uncommitted |
+| parameter names (source AST → binary DWARF) | recovered only when `needsNames` is true; self-describing structs do not need handler parameter names |
+| middleware chains (global + group + endpoint) | one frozen slice per route, reused directly at request time |
 
-## Object pools: reuse everything reusable
+## Object pools
 
 | Pool | Reused object |
 |---|---|
-| `contextPool` | Context (all references cleared before returning it) |
-| `keysPool` | `Context.Set/Get` key/value map (cleared before return — eliminates Set/Get allocations) |
-| `responseWriterPool` | response-writer wrapper (underlying writer reference detached before return) |
-| `pathParamsPool` | path-parameter map |
-| `paramsPool` | reflection call-argument slice (stores pointers to avoid boxing) |
-| `bodyBufferPool` | JSON body read buffer (returned as soon as binding finishes; decoded results are independent copies) |
+| `contextPool` | Context, with all references cleared before return |
+| `keysPool` | `Context.Set/Get` key/value map |
+| `responseWriterPool` | response-writer wrapper |
+| `pathParamsPool` | path-parameter map for dynamic routes |
+| `paramsPool` | reflection call-argument slice |
+| `bodyBufferPool` | JSON and urlencoded body read buffer |
 | `segmentPool` | path-segment slice for route matching |
 | `colorBufPool` | console colorized-line buffer |
-| `responseBufferPool` | response write buffer (serialized results land here before being written out) |
+| `responseBufferPool` | return-value, SSE and compression output buffer |
 
-Pooling saves not just allocations but GC pressure — especially visible under high concurrency. Every pooled object is cleared of references before return, so no previous request's data stays pinned in memory or leaks into the next request.
+Each `Compress` middleware also owns a pool of gzip writers. Pooling reduces allocations and GC pressure, but `sync.Pool` neither guarantees the same object nor an allocation-free path; correctness depends on resetting before return, not object identity.
 
-## Per-request parsing: touch each piece of data once
+## Per-request parsing
 
-- the URL query is parsed exactly once per request — urlencoded body decoding no longer re-parses the query on the side;
-- the JSON "is the body empty" check is folded into parameter parsing, so binding performs no second body scan;
-- the compression middleware's output buffer reuses `responseBufferPool` — a compressed response makes zero fresh allocations.
+- the URL query is parsed at most once when needed; urlencoded body decoding does not re-parse it;
+- multi-key queries decode only names the handler can bind, while preserving repeated values and standard percent-decoding behavior;
+- JSON bodies use a pooled buffer, and the empty-body check is folded into parsing;
+- multi-parameter JSON validates syntax once and retains only needed top-level raw slices instead of decoding the whole object repeatedly;
+- form bodies also use a pooled buffer, with known-length preallocation only within the total body limit.
 
-## Route matching: zero-allocation hot path
+## Route matching
 
-- path segmentation uses `strings.Cut` to produce **substrings** sharing the original path's backing storage — no copying;
-- the segment slice comes from a pool; once warm, matching produces no new allocations;
-- static routes (no path parameters) never enter the radix tree — they live in per-method maps matched in O(1); only dynamic routes with parameters walk the tree;
-- inside the tree, static children are direct map lookups; only variable branches backtrack.
+- static routes live in per-method maps and use O(1) lookup on the original path, with no path-parameter allocation on a hit;
+- only a static miss checks repeated/trailing slashes and probes the normalized static path again;
+- dynamic routes enter a segment tree, with segments sharing the original path's backing storage;
+- segment slices and path-parameter maps are pooled; static children win inside the tree, and failed variable branches backtrack and clean up.
 
 ## Lazy boxing
 
-The handler's raw return value is held as a `reflect.Value`; it is boxed into `any` and cached only when middleware actually calls `c.Result()`. Requests that never read Result (the vast majority) pay zero boxing allocations.
+The handler's raw return value is held as a `reflect.Value`; it is boxed into `any` and cached only when middleware calls `c.Result()`. Requests that never read `Result` do not pay that boxing cost.
 
 ## The honest trade-off
 
-The remaining gap versus mature frameworks comes from the inherent cost of **invoking arbitrary handler signatures via reflection** — the price of the core "signature is the API" feature, not something easily erased. GBL's strategy: push every non-reflection cost to the minimum (precomputation + pooling + zero-allocation matching), leaving reflection as the only major cost.
+The remaining gap versus mature frameworks comes from the inherent cost of **invoking arbitrary handler signatures via reflection** — the price of the core "signature is the API" feature. GBL reduces overhead around reflection rather than promising to eliminate it.
 
-If your scenario is sensitive to extreme throughput and signatures are fixed, struct binding + a simple middleware chain is the fastest combination; avoid reading `Result()` in hot-path middleware (it triggers boxing).
+## Run your own benchmarks
 
-## Run the benchmarks yourself
-
-The repository ships in-process micro-benchmarks (standard library only — the main module stays zero-dependency):
+From your application module:
 
 ```bash
-go test -bench=. -benchmem -run=^$
+go test -bench=. -benchmem -run=^$ ./...
 ```
 
-Workloads:
+For credible comparisons:
 
-| Benchmark | Scenario |
-|---|---|
-| `BenchmarkGblStatic` | static return, no parameters |
-| `BenchmarkGblPathParam` | path-parameter binding |
-| `BenchmarkGblJSON` | JSON body struct binding + return |
-| `BenchmarkGblMiddleware` | two-layer middleware chain |
+- give both implementations identical payloads, routes and middleware;
+- reuse requests and writers so fixture allocations do not pollute business costs;
+- warm up first, then compare medians and distributions across repeated runs with `benchstat`;
+- record `ns/op`, `B/op` and `allocs/op`, not throughput alone;
+- use a shared engine for parallel benchmarks and ensure no test-only global state interferes.
 
-Each has a `Parallel` variant (shared engine, GOMAXPROCS concurrency) — exactly where object pools earn their keep under load. The gin comparison lives in the separate `ginbench` module, using the same harness and workloads, so the numbers are directly comparable.
-
-> This site intentionally shows no concrete benchmark numbers: performance depends on hardware and Go version — trust the results of `go test -bench` on your own machine.
+Performance depends on hardware, Go version and workload. Trust measurements from your own environment.
 
 Next: [API Reference](/docs/api-reference).

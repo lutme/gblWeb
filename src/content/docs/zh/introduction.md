@@ -1,6 +1,6 @@
 # 简介
 
-**GBL**（Grand Blue Lore，伟大蓝色真理）是一个**零依赖**的 Go Web 框架。只用 Go 标准库就能跑起一个完整的 HTTP 服务，`go.mod` 里除了模块声明没有任何第三方包。
+**GBL**（Grand Blue Lore，伟大蓝色真理）是一个**零依赖**的 Go Web 框架。只用 Go 标准库就能跑起一个完整的 HTTP 服务；`go.mod` 只有模块声明和 Go 版本，没有任何第三方包。
 
 它的核心主张只有一句话：
 
@@ -31,7 +31,7 @@ func main() {
 
 GBL 在启动时读取每个 handler 的函数签名，按**类型 + 名字**为每个参数预计算装配计划：
 
-- `*gbl.Context`、`*http.Request`、`http.ResponseWriter`、上传文件类型 → 框架直接注入；
+- `*gbl.Context`、`*http.Request`、`http.ResponseWriter`、`gbl.SSEWriter`、上传文件类型 → 框架直接注入；
 - 其余任意类型 → 按参数名从路径参数、JSON body 或 form/query 中绑定；
 - 返回值 → 按类型自动序列化为纯文本或 JSON。
 
@@ -50,32 +50,34 @@ gbl.Post("/user", func(u User) *User {
 
 ### 一个引擎，多个入口
 
-GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用于它，所以你注册的规则和你启动的服务必然是同一实例，不存在"注册进第二个引擎"的坑。对外不存在引擎实例，路由分组只以 `Group` 返回的 `RouteGroup` 句柄存在。
+GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用于它，所以你注册的规则和你启动的服务必然是同一实例。对外不存在引擎实例，路由分组只以 `Group` 返回的 `RouteGroup` 句柄存在。
 
 ### 严格错误策略
 
-非预期 panic **永不回显内部信息**：原因写进服务端日志，客户端只拿通用 `500`。回显权按**消息是谁写的**划分——开发者写的原样到达客户端：显式的 `Abort`、你注册的 `PanicProcessor`、`Validate` 返回的错误文本；框架拼出的内部细节（绑定失败的反射信息）只进日志，客户端拿通用 `400`。
+非预期 panic **永不回显内部信息**：原因写进服务端日志，客户端只拿通用 `500`。回显权按**消息是谁写的**划分——开发者写的原样到达客户端：显式的 `Abort`、你注册的 `PanicProcessor`、`Validate` 返回的错误文本；框架拼出的内部细节只进日志。响应已经提交或连接已 Hijack 后，无法再改写 HTTP 回答，但非预期 panic 仍会记录。
 
 ### 失败要趁早（fail-fast）
 
-路由冲突、非法路径语法、非法配置、无法恢复参数名……所有注册与配置类错误都在**启动时**暴露：先经日志记录原因，再 panic。部署还没开始服务就挂掉时，日志里一定留有原因，而不是一条裸栈。
+路由冲突、非法路径语法、非法配置、无法恢复参数名……所有注册与配置类错误都在**启动时**暴露：先经日志记录原因，再 panic。部署还没开始服务就挂掉时，日志里一定留有原因。
 
 ## 能力总览
 
 | 领域 | 能力 |
 |---|---|
-| 路由 | 7 种 HTTP 动词、`:name` 与 `{name}` 路径参数、静态优先匹配、HEAD/OPTIONS 自动兜底、路由分组 |
+| 路由 | 7 种 HTTP 动词、`:name` 与 `{name}` 路径参数、静态 map 优先、动态树回溯、HEAD/OPTIONS 自动兜底、路由分组 |
 | 装配 | 路径/query/form/JSON/multipart 按类型+名字自动绑定，支持标量、指针、切片、数组、嵌套结构体 |
 | 中间件 | 洋葱模型、`c.Next()` 请求/响应两阶段、分组作用域、`Abort` 一步拦截 |
 | 上下文 | 池化 `Context`、请求级 key/value、泛型方法取值 `Get[T]` / `Value[T]` |
-| 校验 | `Validatable` 接口，装配后 handler 前自动校验 |
-| 错误 | `Abort` / `PanicProcessor` / 通用 500 兜底，内部细节零泄漏 |
+| 校验 | `Validatable` 接口，装配后 handler 前自动校验；多参数 JSON 缺字段先使用零值 |
+| 实时流 | GET SSE、自动 Flush、心跳、写超时、断连取消、`OnError` / `OnComplete` |
+| 响应控制 | 原始 `http.ResponseWriter`、1xx/101、`ResponseController`、Hijack、HTTP/2 Push 转发 |
+| 错误 | `Abort` / `PanicProcessor` / 通用 500 兜底；已提交 body 后的 panic 仍记日志 |
 | 日志 | 结构化 `Logger` 接口、私有彩色控制台、`SetLogger` 接入任意后端、包级 `Info/Warn/Error`、启动横幅 |
 | 配置 | `Configure` 代码配置、TLS、超时；内核不读配置文件 |
-| 上传 | 三重独立限额（总 body / 内存阈值 / 单文件），413 拒绝 |
+| 上传 | 三重独立限额（总 body / 文件内容总内存阈值 / 单文件），413 拒绝 |
 | CORS | 结构体配置、预检处理、凭据+通配符危险组合启动即拦截 |
 | 压缩 | `Compress` gzip 中间件：Accept-Encoding / 可压缩类型 / 1 KB 三条件判定，自动 `Vary` |
-| 生命周期 | 信号优雅停机、`Shutdown` 主动停机、启动失败先日志后 panic |
+| 生命周期 | 信号优雅停机、`Shutdown` 主动停机、SSE 取消、Hijack 连接清理、启动失败先日志后 panic |
 
 ## 环境要求
 
@@ -87,6 +89,8 @@ GBL 只暴露**一个**包级引擎。`Get/Post/Use/Group/Run/...` 全部作用�
 
 - 想立刻跑起来：[快速上手](/docs/getting-started)
 - 想理解核心机制：[Handler 与参数装配](/docs/handlers)
+- 想控制原始响应：[ResponseWriter 进阶](/docs/response-writer)
+- 想实现实时事件：[SSE 实时流](/docs/sse)
 - 想查某个符号：[API 总览](/docs/api-reference)
 
 ## 开源协议

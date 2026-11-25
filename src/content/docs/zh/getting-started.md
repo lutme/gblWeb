@@ -116,7 +116,7 @@ curl -X POST http://localhost:9801/user \
 # {"ID":1,"Name":"ADA"}
 ```
 
-注意第三个请求：你没有任何解码代码，`User` 自动从 body 装配，返回的 `*User` 自动变成 JSON，`Content-Type` 在注册时就根据返回类型选好了。
+注意第三个请求：你没有任何解码代码，`User` 自动从 body 装配，返回的 `*User` 自动变成 JSON。临时 `Content-Type` 在注册时根据返回类型选好，并在中间件和 handler 执行前写入；运行时序列化仍可在响应头提交前修正最终类型。
 
 ## 可选配置：Configure
 
@@ -151,7 +151,7 @@ net/http 接收连接、解析请求
 （若配置了 CORS）corsHandler 检查 Origin
   │
   ▼
-方法解析 + 路由树匹配，填充路径参数 {id: "42"}
+方法解析 + 静态 map 优先匹配（未命中再进动态树），填充路径参数 {id: "42"}
   │
   ▼
 从池中取出 Context，装入请求、路径参数、该路由冻结的中间件链
@@ -168,7 +168,7 @@ routeEndpoint 调用 invokeHandler：
 链回溯（中间件 c.Next() 之后的代码执行）
   │
   ▼
-写回暂存结果（Content-Type 注册时已选定）
+正常返回值路径写回暂存结果（直接 Write / Hijack / 无 body 状态除外）
   │
   ▼
 清理 multipart 临时文件，Context 等对象复位归还对象池
@@ -177,13 +177,13 @@ routeEndpoint 调用 invokeHandler：
 两个值得记住的点：
 
 1. **中间件链在启动时冻结**。`Run()` 才把全局中间件、分组中间件和终端 `routeEndpoint` 组装成每条路由的固定切片，请求期直接复用，不按请求重新组装。
-2. **响应在链回溯完之后才写回**。所以 `c.Next()` 之后的中间件代码能读到最终状态码、响应大小和 handler 返回值——计时与访问日志都放在这一阶段。
+2. **正常返回值响应在链回溯完后才自动写回**。所以 `c.Next()` 之后的中间件代码能读到当前状态码、响应大小和 handler 返回值；直接 Write、Flush、SSE 和 Hijack 会改变提交时机。
 
 细节分别见[中间件](/docs/middleware)与[Context 详解](/docs/context)。
 
 ## 优雅停机
 
-`gbl.Run()` 自带信号处理：收到 `SIGINT`（Ctrl+C）或 `SIGTERM` 时关闭监听，给在途请求 5 秒收尾窗口，然后退出。需要从代码主动停机（健康检查开关、测试、嵌入场景）时用 `gbl.Shutdown(ctx)`，见[服务生命周期](/docs/lifecycle)。
+`gbl.Run()` 自带信号处理：收到 `SIGINT`（Ctrl+C）或 `SIGTERM` 时先取消 SSE，再关闭监听并给在途请求 5 秒收尾窗口；成功停机还会关闭跟踪的 Hijack 连接。需要从代码主动停机时用 `gbl.Shutdown(ctx)`，见[服务生命周期](/docs/lifecycle)。
 
 ## 下一步
 

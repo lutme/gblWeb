@@ -22,7 +22,7 @@ See [Routing](/docs/routing), [Route Groups](/docs/groups).
 | Symbol | Signature | Description |
 |---|---|---|
 | `Run` | `func Run()` | start the single engine and block; signal-driven graceful shutdown; the engine serves once — a second Run panics |
-| `Shutdown` | `func Shutdown(ctx context.Context) error` | explicit graceful shutdown; repeatable, retryable after a failed attempt, cross-goroutine safe; before Run returns `http.ErrServerClosed` |
+| `Shutdown` | `func Shutdown(ctx context.Context) error` | cancels SSE, closes the listener and drains requests; success closes tracked hijacked connections; timeout preserves remaining connections and can be retried; before Run returns `http.ErrServerClosed` |
 | `Use` | `func Use(middleware ...HandlerFunc)` | append global middleware (register before Run) |
 
 > **The engine is read-only after Run.** Every assembling API — route registration, `Use` / `GroupUse`, `SetLogger`, `Configure`, `SetCorsConfig`, `RegisterPanicProcessor`, `SetMax*` — must be called **before** `Run`; calling one afterward panics with an explicit *"must be called before Run"* message instead of being silently swallowed.
@@ -45,11 +45,22 @@ See [Lifecycle](/docs/lifecycle), [Middleware](/docs/middleware).
 
 See [Context](/docs/context).
 
+## Response control
+
+| Symbol/capability | Description |
+|---|---|
+| `http.ResponseWriter` parameter | injects the wrapped writer for status codes, direct bodies, Flush, Hijack and Push |
+| `http.NewResponseController` | recommended for Flush, Hijack, read/write deadlines and full-duplex control; unsupported capabilities return `http.ErrNotSupported` |
+| `Unwrap() http.ResponseWriter` | the wrapper's forwarding entry point for `ResponseController` to reach underlying capabilities |
+| `http.Flusher` / `http.Hijacker` / `http.Pusher` | assert the standard interfaces; actual support depends on the underlying writer |
+
+The wrapper type itself is unexported, but the injected value satisfies these standard interfaces. See [ResponseWriter Control](/docs/response-writer).
+
 ## Request-scoped values
 
 | Symbol | Signature | Description |
 |---|---|---|
-| `Context.Get[T]` | `func (c *Context) Get[T any](key string) (T, bool)` | generic-method typed read; missing/wrong type → zero value + false; nil-safe; `Get[any]` reads as-is |
+| `Context.Get[T]` | `func (c *Context) Get[T any](key string) (T, bool)` | generic-method typed read; missing/wrong type → zero value + false; nil-safe; explicit nil reads as `(nil, true)` through `Get[any]` |
 | `Context.Value[T]` | `func (c *Context) Value[T any](key string) T` | same, returning the value only |
 
 Since Go 1.27 methods may carry type parameters — the former package-level `Value` / `MustValue` helpers are removed.
@@ -70,9 +81,17 @@ See [Errors & Panics](/docs/errors).
 
 | Symbol | Signature | Description |
 |---|---|---|
-| `Validatable` | `interface { Validate() error }` | implemented by a business parameter ⇒ validated automatically (after binding, before the handler) |
+| `Validatable` | `interface { Validate() error }` | implemented by a business parameter ⇒ validated automatically (after binding, before the handler); nil pointers skip validation; missing multi-parameter JSON members use zero values |
 
 See [Validation](/docs/validation).
+
+## SSE
+
+| Symbol | Signature | Description |
+|---|---|---|
+| `SSEWriter` | `interface { Send(any) error; Done() <-chan struct{}; OnError(func(error)); OnComplete(func()) }` | streaming writer for GET routes; manages headers, Flush, heartbeats, write deadlines and cancellation |
+
+SSE handlers cannot return values. Binding and validation finish before streaming starts; the first runtime stream failure is logged by default, and lifecycle callbacks are optional. See [Server-Sent Events](/docs/sse).
 
 ## Upload limits
 
@@ -109,7 +128,7 @@ See [CORS](/docs/cors).
 
 | Symbol | Signature | Description |
 |---|---|---|
-| `Compress` | `func Compress(level int) HandlerFunc` | gzip response-compression middleware; gated on Accept-Encoding, compressible type and a 1 KB minimum |
+| `Compress` | `func Compress(level int) HandlerFunc` | gzip response-compression middleware; gated on Accept-Encoding, compressible type and a 1 KB minimum; honors `q=0`, and every valid instance adds `Vary: Accept-Encoding` |
 | `NoCompression` / `BestSpeed` / `DefaultCompression` / `BestCompression` / `HuffmanOnly` | `const` (= the `compress/gzip` values) | compression levels, re-exported — no stdlib import needed |
 
 See [Compression](/docs/compression).

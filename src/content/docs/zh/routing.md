@@ -46,7 +46,13 @@ gbl.Get("/user/{id}", func(id string) string { return id })  // 花括号式
 
 ## 匹配优先级：静态优先 + 回溯
 
-每个 HTTP 动词各有一棵按段组织的路由树。匹配时**每一层都先试静态子节点，失败再试变量子节点**，变量分支走死会回溯并清理已记录的路径参数：
+每个 HTTP 动词同时维护**静态路由 map** 和**动态路由树**。请求到来时：
+
+1. 先用原始路径 O(1) 直查静态 map，命中立即返回，不分配路径参数；
+2. 未命中且存在静态路由时，才检查连续斜杠/尾部斜杠；需要归一化就归一化后再查一次静态 map；
+3. 仍未命中才进入动态树，按段匹配并填充路径参数。
+
+动态树内**每一层都先试静态子节点，失败再试变量子节点**，变量分支走死会回溯并清理已记录的路径参数。请求路径的 `/a//b` 与 `/a/b/` 因此能和注册后的 `/a/b` 命中同一规则：
 
 ```go
 gbl.Get("/user/:id", func(id string) string { return "var:" + id })
@@ -116,7 +122,7 @@ gbl.Options("/items", func(w http.ResponseWriter) {
 | 路径存在，但当前动词没注册 | `405 Method Not Allowed` + `Allow` 头 |
 | 动词本身不被实现（TRACE、CONNECT、自定义动词） | `501 Not Implemented` |
 
-`Allow` 头的计算会探测所有动词的路由树，并且**把 HEAD 算进去**（只要 GET 存在）——与 `serveHTTP` 实际接受的方法一致：
+`Allow` 头的计算会探测所有动词的静态 map 与动态树，并且**把 HEAD 算进去**（只要 GET 存在）——与 `serveHTTP` 实际接受的方法一致：
 
 ```go
 gbl.Get("/res", h)

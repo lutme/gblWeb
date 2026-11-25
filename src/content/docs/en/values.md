@@ -22,6 +22,7 @@ gbl.Get("/me", func(c *gbl.Context) string {
 - `Set(key string, value any)`: same key overwrites; the bag is created lazily and pooled (`keysPool`), so heavy `Set/Get` use allocates nothing.
 - `Get[T](key string) (T, bool)`: typed read — a missing key **or a type mismatch** yields T's zero value + `false`, and the caller decides what to do; safe on a `nil` Context.
 - When you do not want to name a type, `Get[any]` reads the stored value as-is.
+- An explicitly stored nil makes `Get[any]` return `(nil, true)` because the key exists; `Get[string]` is a type mismatch and returns `("", false)`.
 - The bag is cleared with the pooled Context and **never leaks into the next request**.
 
 ## Value: when you do not need ok

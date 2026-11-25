@@ -6,7 +6,7 @@ type Validatable interface {
 }
 ```
 
-任何被装配的**业务参数**（含指针），只要其类型实现了 `Validate() error`，就会被自动校验，时机是**装配之后、handler 之前**。没实现的类型零开销。
+任何被装配的**业务参数**（含指针），只要其类型实现了 `Validate() error`，就会被自动校验，时机是**装配之后、handler 之前**。没实现的类型零开销。nil 指针直接传给 handler，不调用 `Validate`。
 
 ## 基本用法
 
@@ -58,9 +58,35 @@ gbl.Post("/signup", func(s Signup) string { ... })  // ✓ 会校验
 gbl.Post("/signup2", func(s *Signup) string { ... }) // ✓ 也会校验
 ```
 
+## 缺失 JSON 成员使用零值
+
+多业务参数 JSON 模式下，缺少顶层成员不会单独触发 400。GBL 先创建该参数类型的零值，再执行 `Validatable`，最后调用 handler：
+
+```go
+type Draft struct {
+    Title string
+}
+
+func (d *Draft) Validate() error {
+    if d.Title == "" {
+        return errors.New("title is required")
+    }
+    return nil
+}
+
+// Body: {"publish": true}，缺少 draft
+gbl.Post("/draft", func(draft Draft, publish bool) string {
+    return fmt.Sprintf("%s publish=%v", draft.Title, publish)
+})
+```
+
+上例中 `draft` 是零值 `Draft{}`，指针接收者的 `Validate` 仍会执行并返回 400。若不实现 `Validatable`，handler 收到零值并自行决定是否允许。指针参数缺失时保持 nil，不调用 `Validate`。
+
+JSON body 本身仍必须是对象；数组、`null`、非法 JSON 和类型转换错误属于装配失败，返回通用 400。
+
 ## 注入类参数不参与校验
 
-只有业务参数（按名字装配的那些）会被检查。`*Context`、`*http.Request`、`http.ResponseWriter`、文件参数不携带客户端业务数据，跳过。
+只有业务参数（按名字装配的那些）会被检查。`*Context`、`*http.Request`、`http.ResponseWriter`、`gbl.SSEWriter`、文件参数不携带客户端业务数据，跳过。
 
 ## 接入你自己的校验库
 
@@ -75,11 +101,12 @@ func (s Signup) Validate() error {
 
 ## 与装配错误的区别
 
-| 阶段 | 失败 | 客户端 | 日志 |
+| 阶段 | 结果 | 客户端 | 日志 |
 |---|---|---|---|
-| 装配 | 缺 JSON 成员 / 类型转换失败 | 通用 400 | 反射细节（参数名、Go 类型、strconv 详情） |
+| 装配 | 缺 JSON 成员 | 使用零值，不中断 | — |
+| 装配 | JSON 非对象 / 类型转换失败 | 通用 400 | 反射细节（参数名、Go 类型、strconv 详情） |
 | 校验 | `Validate` 返回错误 | 400 + **错误文本原样** | — |
 
 装配错误由框架从反射内部拼出，可能带内部标识，所以只回通用 400、细节进日志；校验消息是开发者亲手写的，披露责任在你，故原样到达客户端。
 
-下一章：[文件上传](/docs/uploads)。
+下一章：[SSE 实时流](/docs/sse)——发送事件、心跳与生命周期回调。

@@ -46,7 +46,13 @@ Syntax rules (violations fail startup, reason logged first):
 
 ## Match priority: static first + backtracking
 
-Each HTTP verb owns its own segment-organized routing tree. At every level the matcher **tries the static child first, then the variable child**; a dead-end variable branch backtracks and cleans up recorded path parameters:
+Each HTTP verb maintains both a **static-route map** and a **dynamic routing tree**. For an incoming request, GBL:
+
+1. probes the static map with the original path in O(1), returning immediately on a hit without allocating path parameters;
+2. only after a miss, and only when static routes exist, checks for repeated/trailing slashes, normalizes when needed, and probes the static map again;
+3. enters the dynamic tree only if both probes miss, matching segments and filling path parameters.
+
+Inside the dynamic tree, **every level tries the static child first, then the variable child**; a dead-end variable branch backtracks and cleans up recorded path parameters. Request paths such as `/a//b` and `/a/b/` therefore reach the same rule as registered `/a/b`:
 
 ```go
 gbl.Get("/user/:id", func(id string) string { return "var:" + id })
@@ -116,7 +122,7 @@ gbl.Options("/items", func(w http.ResponseWriter) {
 | the path exists, but not for this verb | `405 Method Not Allowed` + `Allow` header |
 | the verb itself is not implemented (TRACE, CONNECT, custom verbs) | `501 Not Implemented` |
 
-The `Allow` header is computed by probing every verb's routing tree and **counts HEAD in** (whenever GET exists) — consistent with the methods `serveHTTP` actually accepts:
+The `Allow` header is computed by probing every verb's static map and dynamic tree and **counts HEAD in** (whenever GET exists) — consistent with the methods `serveHTTP` actually accepts:
 
 ```go
 gbl.Get("/res", h)

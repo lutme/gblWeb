@@ -42,17 +42,18 @@ gbl.Get("/user", func(id string) string { return hs.Lookup(id) })
 
 ## 可注入的参数类型
 
-每个参数在启动时被分入五类之一，请求期不再做类型判断：
+每个参数在启动时被分入六类之一，请求期不再做类型判断：
 
 | 参数类型 | GBL 注入什么 |
 |---|---|
 | `*gbl.Context` | 请求上下文（也是中间件的入参） |
 | `*http.Request` | 原始请求 |
 | `http.ResponseWriter`（或满足该接口的类型） | 框架包装后的响应写入器，完全接管响应 |
+| `gbl.SSEWriter` | GET 路由上的 SSE 事件流 |
 | `multipart.FileHeader` / `*multipart.FileHeader` / `[]multipart.FileHeader` / `[]*multipart.FileHeader` | 按字段名匹配到的上传文件 |
 | 其他任意类型 | 按名字装配的**业务值**（见下） |
 
-注入类参数不触发 body 解析——一个只声明 `*http.Request` 的 handler，请求 body 完全不会被读取。
+注入本身不触发 body 解析——一个只声明 `*http.Request` 的 handler，请求 body 完全不会被读取。SSE 的响应控制见[ResponseWriter 进阶](/docs/response-writer)，流式发送见[SSE 实时流](/docs/sse)。
 
 ## 业务值的装配来源与优先级
 
@@ -110,7 +111,7 @@ gbl.Post("/sum", func(nums []int) int {
 
 ### 规则 2：多个业务参数 ← 按形参名拆分顶层成员
 
-JSON body + 多个业务参数时，body 必须是 JSON 对象，**每个非路径参数都要有一个与其形参同名的顶层成员**：
+JSON body + 多个业务参数时，body 必须是 JSON 对象，每个非路径参数从与其形参同名的顶层成员读取：
 
 ```go
 // POST /user · Body: {"u": {"id": 1, "name": "ada"}, "verbose": true}
@@ -119,7 +120,9 @@ gbl.Post("/user", func(u User, verbose bool) string {
 })
 ```
 
-缺一个顶层成员就是请求期 **400**（通用文本；缺哪个成员等细节只进服务端日志），而不是静悄悄给零值。body 不是对象（如数组）同样 400。
+缺少某个顶层成员时，该参数使用**零值**，不会仅因缺失就返回 400。随后若参数类型实现了 `Validatable`，由校验规则决定这个零值是否可接受；值类型即使使用指针接收者，也能在可寻址的零值上执行校验。指针参数缺失时仍为 nil，跳过校验并传给 handler。
+
+成员存在时，形参名与 JSON key 精确匹配；重复 key 保留最后一个值。body 不是对象（如数组或 `null`）仍是 400。完整规则见[参数校验](/docs/validation)。
 
 ### 规则 3：路径参数依然优先
 
@@ -181,7 +184,7 @@ form/query 与路径参数都是字符串，GBL 按目标类型转换：
 | 指针（`*int` 等） | 来源缺失 → `nil`；存在 → 指向转换后的值 |
 | 切片（`[]int` 等） | 消费**重复值**（`?tag=a&tag=b`）；缺失 → 空切片 |
 | `[]byte` | 特殊：取第一个值的原始字节，不是重复值 |
-| 数组（`[3]int`） | 重复值数量**必须恰好等于数组长度**，否则 400 |
+| 数组（`[3]int`） | 提供了重复值时，数量必须恰好等于数组长度；完全缺失时使用零值数组 |
 | 结构体 | 按绑定名递归（见上） |
 
 ```go
@@ -206,16 +209,20 @@ gbl.Get("/maybe", func(p *int) string {
 
 ## 返回值自动序列化
 
-Content-Type 在**注册时**就根据返回值的静态类型选好：
+GBL 在**注册时**根据返回值的静态类型选定临时 Content-Type，并在中间件和 handler 执行前写入：
 
-| 返回类型 | Content-Type | body |
+| 静态返回类型 | 临时 Content-Type | 未提交时的最终 body |
 |---|---|---|
 | `string` | `text/plain; charset=utf-8` | 原样 |
 | `[]byte` | `text/plain; charset=utf-8` | 原始字节 |
 | `bool` / 整数 / 无符号 / 浮点 / 复数 | `text/plain; charset=utf-8` | 格式化文本（`42`、`true`、`3.14`） |
-| 结构体 / map / 数组 / 非字节切片 / 指针 / 接口 | `application/json; charset=utf-8` | JSON |
-| nil 指针 / nil 接口 | `application/json; charset=utf-8` | **空 body** |
-| 无返回值 | — | 空 body，200 |
+| 结构体 / map / 数组 / 非字节切片 / 指向复合类型的指针 / 接口 | `application/json; charset=utf-8` | 通常为 JSON；接口和指针按运行时值修正 |
+| 指向标量的指针 | `text/plain; charset=utf-8` | 格式化文本 |
+| `error` | 静态类型为接口时临时为 JSON | 错误消息，`text/plain; charset=utf-8` |
+| nil 指针 / nil 接口 | 沿用静态类型 | **空 body**，运行时修正为纯文本 |
+| 无返回值 | `text/plain; charset=utf-8` | 空 body，200 |
+
+响应头尚未提交时，运行时序列化可以修正最终类型；`Flush` 或第一次 `Write` 提交后，类型不再变化。这样中间件提前 `Flush` 也有可用的媒体类型。详见[ResponseWriter 进阶](/docs/response-writer)。
 
 ```go
 gbl.Get("/text", func() string { return "plain" })
@@ -243,7 +250,7 @@ gbl.Post("/echo", func(r *http.Request) string {
 })
 ```
 
-一旦写过 body（无论 handler 还是中间件），框架就不再写暂存结果——以你写的为准。
+一旦 handler 或中间件调用过 `Write`（包括零长度写入），框架就不再写暂存结果。`Hijack` 后同样完全停止自动写回；仅调用 `WriteHeader` 则仍可能自动写返回值，但会保留状态码。`204`、`304`、`101` 不写自动 body。完整语义见[ResponseWriter 进阶](/docs/response-writer)。
 
 ## 参数名从哪来
 
@@ -257,7 +264,8 @@ Go 的反射只能拿到参数**类型**，拿不到**名字**。GBL 在启动�
 
 | 失败 | 状态码 | 客户端看到 |
 |---|---|---|
-| 参数缺失（多参数 JSON）/ 转换失败 | 400 | 通用 `Bad Request`（参数名、Go 类型等反射细节只进日志） |
+| 多参数 JSON 非对象 / 类型转换失败 | 400 | 通用 `Bad Request`（参数名、Go 类型等反射细节只进日志） |
+| 多参数 JSON 缺少成员 | — | 使用零值；继续校验和 handler，不会仅因缺失返回 400 |
 | body 超过总限额 | 413 | `Request Entity Too Large` |
 | 校验失败（`Validatable`） | 400 | `Validate` 错误文本原样回显（消息是你写的，披露责任在你） |
 | 返回值序列化失败 | 500 | 固定文本（服务端问题，不泄漏） |
@@ -285,4 +293,4 @@ gbl.Post("/orders", func(o Order) Order {
 })
 ```
 
-下一章：[路由](/docs/routing)——路径语法、匹配优先级与自动兜底。
+下一章：[ResponseWriter 进阶](/docs/response-writer)——状态码、Flush、Hijack 与底层能力。

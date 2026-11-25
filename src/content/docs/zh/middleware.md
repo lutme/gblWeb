@@ -35,7 +35,7 @@ type HandlerFunc func(c *Context)
 
 **`c.Next()` 会执行当前环之后的所有环**（剩余中间件，最后是 handler），然后返回。因此 `c.Next()` 之前是**请求阶段**，之后是**响应阶段**。这两个阶段都是你在中间件函数里自己写的代码，以 `c.Next()` 这一行为界。
 
-handler 是最内层的业务函数：没有阶段之分，也从不叫 `Next()`。框架要等整条链回溯完，才把暂存 body 写进连接——所以围着 `Next()` 计时测的是完整的请求处理耗时，访问日志也放在这一阶段，因为此时结果与状态码已确定。
+handler 是最内层的业务函数：没有阶段之分，也从不叫 `Next()`。正常返回值路径要等整条链回溯完才自动写回，所以围着 `Next()` 计时测的是完整的请求处理耗时；直接 Write、Flush、SSE 和 Hijack 会提前提交。最外层访问日志在完整回溯后读取最终状态。
 
 `Next()` 就是一个普通的阻塞调用：同步跑完下游所有环才返回。所有嵌套的 `Next` 共享同一个游标，任何环都不会被执行两次。
 
@@ -147,7 +147,7 @@ gbl.Use(func(c *gbl.Context) {
 
 ### 响应阶段读取结果
 
-handler 跑完后，暂存结果还没写回——中间件在此刻能读到最终状态与返回值：
+handler 跑完后，正常返回值的暂存结果通常还没写回——中间件此刻能读到当前有效状态与返回值；直接 Write、Flush、SSE 或 Hijack 可能已经提交：
 
 ```go
 gbl.Use(func(c *gbl.Context) {
@@ -158,7 +158,7 @@ gbl.Use(func(c *gbl.Context) {
 })
 ```
 
-`c.Result()` 返回 handler 的原始返回值（首次读取才装箱）；`c.IsWritten()` 判断 body 是否已被提交。中间件**没有改写暂存 body 的 API**——想自己写响应，用 `AbortWithStatusString` / `AbortWithStatusJSON`（写 body 的同时中断链），或在 handler 里声明 `http.ResponseWriter` 参数完全接管。
+`c.Result()` 返回 handler 的原始返回值（首次读取才装箱）；`c.IsWritten()` 判断是否调用过 `Write`，包括零长度写入，仅 `WriteHeader` / `Flush` 不算。中间件**没有改写暂存 body 的 API**——想自己写响应，用 `AbortWithStatusString` / `AbortWithStatusJSON`（写 body 的同时中断链），或在 handler 里声明 `http.ResponseWriter` 参数完全接管。
 
 ### 访问日志（自己装）
 
@@ -179,11 +179,11 @@ gbl.Use(func(c *gbl.Context) {
 
 1. **接收与分发。** `net/http` 接受连接、解析请求，调用引擎；若配置了 CORS，则是包着引擎的 `corsHandler`。
 2. **CORS（仅配置时）。** 检查 `Origin`：预检直接应答；允许的来源加上 CORS 头；无 `Origin` 直接进引擎。
-3. **方法与路由匹配。** 未知动词 → 501；在该方法的路由树里匹配并填充路径参数；未注册 HEAD 借用 GET；未匹配 → 404 或 405 + Allow（OPTIONS 则 204）。
+3. **方法与路由匹配。** 未知动词 → 501；先查该动词的静态 map，未命中再进动态树并填充路径参数；未注册 HEAD 借用 GET；未匹配 → 404 或 405 + Allow（OPTIONS 则 204）。
 4. **构建 Context。** 从池中取一个 `Context`，装入请求、路径参数、该路由冻结的链与 logger。
 5. **执行链。** `c.Next()` 驱动到终端 `routeEndpoint`，它调用 `invokeHandler()`：解析 → 装配 → 校验 → 反射调用 handler → 序列化暂存。
-6. **写回响应。** 若已有人写过 body，以它为准；否则用注册时选定的 Content-Type 写出暂存结果，先落已记录的状态码（默认 200）。
+6. **写回响应。** 直接 `Write` 或 Hijack 后以应用写入为准；正常返回值路径在链路回溯后自动写回，保留已记录状态（默认 200），204/304/101 不写 body。临时 Content-Type 在执行前已设置，未提交时仍可由运行时序列化修正。
 7. **收尾。** 清理 multipart 临时文件；Context、路径参数 map、响应写入器复位归还对象池。
-8. **任何 panic** 都被恢复并渲染：显式中止（`Abort` 系列）原样到达客户端；注册了 PanicProcessor 则由它接管；其余记日志并回通用 500。
+8. **任何 panic** 都被恢复：响应未提交且未 Hijack 时，显式中止原样到达客户端，注册了 PanicProcessor 则由它接管，其余记日志并回通用 500；响应已提交后只记录非预期 panic，不再改写回答。
 
 下一章：[Context 详解](/docs/context)——链路上唯一的数据载体。

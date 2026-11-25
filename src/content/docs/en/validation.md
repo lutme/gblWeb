@@ -6,7 +6,7 @@ type Validatable interface {
 }
 ```
 
-Any bound **business parameter** (pointers included) whose type implements `Validate() error` is validated automatically, **after binding and before the handler**. Types that don't implement it cost nothing.
+Any bound **business parameter** (pointers included) whose type implements `Validate() error` is validated automatically, **after binding and before the handler**. Types that don't implement it cost nothing. A nil pointer reaches the handler without calling `Validate`.
 
 ## Basic usage
 
@@ -58,9 +58,35 @@ gbl.Post("/signup", func(s Signup) string { ... })   // ✓ validated
 gbl.Post("/signup2", func(s *Signup) string { ... }) // ✓ also validated
 ```
 
+## Missing JSON members use zero values
+
+In multi-parameter JSON mode, a missing top-level member does not cause a 400 by itself. GBL creates the parameter type's zero value, runs `Validatable`, and then invokes the handler:
+
+```go
+type Draft struct {
+    Title string
+}
+
+func (d *Draft) Validate() error {
+    if d.Title == "" {
+        return errors.New("title is required")
+    }
+    return nil
+}
+
+// Body: {"publish": true}, with draft missing
+gbl.Post("/draft", func(draft Draft, publish bool) string {
+    return fmt.Sprintf("%s publish=%v", draft.Title, publish)
+})
+```
+
+Here `draft` is the zero value `Draft{}`, and pointer-receiver `Validate` still runs and returns 400. Without `Validatable`, the handler receives the zero value and decides whether it is acceptable. A missing pointer parameter stays nil and skips validation.
+
+The JSON body itself must still be an object; arrays, `null`, invalid JSON and type-conversion errors are binding failures and return a generic 400.
+
 ## Injected parameters are not validated
 
-Only business parameters (the ones bound by name) are checked. `*Context`, `*http.Request`, `http.ResponseWriter` and file parameters carry no client business data and are skipped.
+Only business parameters (the ones bound by name) are checked. `*Context`, `*http.Request`, `http.ResponseWriter`, `gbl.SSEWriter` and file parameters carry no client business data and are skipped.
 
 ## Bring your own validation library
 
@@ -75,11 +101,12 @@ func (s Signup) Validate() error {
 
 ## How it differs from binding errors
 
-| Phase | Failure | Client | Log |
+| Phase | Result | Client | Log |
 |---|---|---|---|
-| binding | missing JSON member / conversion failure | generic 400 | reflection detail (parameter names, Go types, strconv detail) |
+| binding | missing JSON member | zero value, no interruption | — |
+| binding | non-object JSON / conversion failure | generic 400 | reflection detail (parameter names, Go types, strconv detail) |
 | validation | `Validate` returns an error | 400 + **the error text verbatim** | — |
 
 Binding errors are assembled by the framework from reflection internals and may carry internal identifiers, so only a generic 400 goes out with the detail in the log; validation messages are authored by the developer, who owns what they disclose, so they reach the client verbatim.
 
-Next: [File Uploads](/docs/uploads).
+Next: [Server-Sent Events](/docs/sse) — sending events, heartbeats and lifecycle callbacks.

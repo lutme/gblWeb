@@ -47,9 +47,9 @@ c.Request // *http.Request —— 原始入站请求
 | `PathParam(name) string` | 按名字取匹配到的路径参数（供中间件用；业务 handler 请按名绑定） |
 | `Set(key, value)` / `Get[T](key) (T, bool)` / `Value[T](key) T` | 请求级取值，泛型方法直接类型化（见[请求级取值](/docs/values)） |
 | `Result() any` | handler 返回值的 `any` 形态（`Next()` 之后有效）；首次读取时才装箱 |
-| `IsWritten() bool` | body 是否已提交 |
+| `IsWritten() bool` | 是否调用过 `Write`，包括零长度写入；仅 `WriteHeader` / `Flush` 不算 |
 | `StatusCode() int` | 将要/已经发送的状态码（默认 200） |
-| `Size() int` | 有效响应体长度 |
+| `Size() int` | 有效响应体长度；1xx、204、304 为 0 |
 | `Aborted() bool` | 链路是否已中断 |
 | `Abort()` | 中断链路，不写任何内容 |
 | `AbortWithStatusString(status, body)` | 以纯文本 body 拒绝并中断 |
@@ -57,12 +57,12 @@ c.Request // *http.Request —— 原始入站请求
 
 ### 观察类方法的语义
 
-暂存 body 在整条链回溯完才提交，所以 `c.Next()` 返回点就能读到**最终**结果：
+正常返回值路径要等整条链回溯完才自动提交暂存 body，所以 `c.Next()` 返回点能读到**当前有效**结果；更外层的中间件仍可在之后改写状态。直接 Write、Flush、SSE 和 Hijack 会改变提交时机：
 
-- `StatusCode()`：将要/已经发送的状态码；没人设置过就是 200。暂存 body 在链回溯完才提交，所以访问日志/指标中间件在 `c.Next()` 返回点读到的就是最终状态。
-- `Size()`：已写出的字节数；还没写出时返回暂存结果的长度——与客户端实际将收到的一致。
+- `StatusCode()`：当前记录或已经发送的状态码；没人设置过就是 200。最外层访问日志在完整回溯后读到最终状态。
+- `Size()`：已写出的字节数；还没写出时返回暂存结果的长度。1xx、204、304 为 0；零长度 `Write` 后也为 0。
 - `Result()`：handler 的原始返回值。不读它就不产生装箱分配。
-- `IsWritten()`：handler（注入的 writer）或 `Abort` 系列已经写过 body 时为 true，此时框架不会再写暂存结果。
+- `IsWritten()`：handler（注入的 writer）或 `Abort` 系列调用过 `Write` 时为 true，包括零长度写入；此时框架不会再写暂存结果。仅提交响应头不算。
 
 ```go
 gbl.Use(func(c *gbl.Context) {
@@ -81,7 +81,7 @@ c.AbortWithStatusString(401, "unauthorized")       // 纯文本拒绝并中断�
 c.AbortWithStatusJSON(403, map[string]string{"error": "forbidden"}) // JSON 拒绝并中断链
 ```
 
-成功响应的状态码固定为 200——想给成功 body 配自定义状态码，在 handler 里声明 `http.ResponseWriter` 参数自己写。`AbortWithStatusJSON` 序列化失败是服务端错误：以通用 500 中止，不回显细节。
+成功响应默认是 200；中间件或 handler 可通过注入的 `http.ResponseWriter` 记录自定义状态码。只设置状态码时，框架仍可能自动写返回值；需要完全控制 body 时直接 `WriteHeader` + `Write`。`AbortWithStatusJSON` 序列化失败是服务端错误：以通用 500 中止，不回显细节。详见[ResponseWriter 进阶](/docs/response-writer)。
 
 ## 场景示例
 

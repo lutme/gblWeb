@@ -91,6 +91,17 @@ func (l appLogger) Banner(block string) {
 
 横幅包含 logo 与状态表（version / listening / tls / routes），随后一条普通 Info：`started successfully, ready to accept requests`。version 从二进制内嵌的构建信息读取：作为依赖被编译进你的应用时，显示的是你 `go.mod` 里要求的 gbl 标签版本；本地或 replace 构建显示 `(devel)`。
 
+## SSE 与 panic 日志
+
+以下事件也走同一个 `Logger`：
+
+- SSE 响应头启动失败：`SSE startup failed`，带真实 `error`；
+- SSE 启动后的第一次写入或 Flush 失败：`SSE stream failed`，即使没有注册 `OnError` 也只记录一次；
+- SSE 生命周期回调 panic：`SSE error callback panic` 或 `SSE complete callback panic`，带恢复值和堆栈；
+- 任何非预期请求 panic：`recovered panic`。body 已写出、仅 Flush 或 Hijack 后仍记录，但不再改写 HTTP 响应。
+
+回调与客户端反馈的完整规则见[SSE 实时流](/docs/sse)和[错误与 panic](/docs/errors)。
+
 ## API 监控归你
 
 框架**有意**不带访问日志中间件。监控 API 调用情况是应用层面的事，而写一行中间件所需的信息链路上全都有——自己装一个：

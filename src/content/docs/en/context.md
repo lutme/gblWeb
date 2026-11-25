@@ -47,9 +47,9 @@ All other fields are unexported; the response writer is only available by declar
 | `PathParam(name) string` | read a matched path parameter by name (for middleware; business handlers should bind by name) |
 | `Set(key, value)` / `Get[T](key) (T, bool)` / `Value[T](key) T` | request-scoped values, typed generically (see [Request-scoped Values](/docs/values)) |
 | `Result() any` | the handler's return value as `any` (valid after `Next()`); boxed only on first read |
-| `IsWritten() bool` | whether the body has been committed |
+| `IsWritten() bool` | whether `Write` was called, including a zero-length write; `WriteHeader` / `Flush` alone do not count |
 | `StatusCode() int` | the status to be / already sent (default 200) |
-| `Size() int` | effective response body length |
+| `Size() int` | effective response body length; 0 for 1xx, 204 and 304 |
 | `Aborted() bool` | whether the chain has been aborted |
 | `Abort()` | abort the chain, write nothing |
 | `AbortWithStatusString(status, body)` | reject with a plain-text body and abort |
@@ -57,12 +57,12 @@ All other fields are unexported; the response writer is only available by declar
 
 ### Semantics of the observation methods
 
-The stashed body is committed only after the whole chain unwinds, so at the point `c.Next()` returns you can already read the **final** results:
+On the normal return-value path, the stashed body is committed only after the whole chain unwinds, so `c.Next()`'s return point exposes the **current effective** result; outer middleware may still change the status afterward. Direct Write, Flush, SSE and Hijack change commit timing:
 
-- `StatusCode()`: the status that will be, or was, sent; 200 if nothing set one. The stashed body is committed only after the chain unwinds, so an access-log or metrics middleware reads the final status right at `c.Next()`'s return point.
-- `Size()`: bytes already written; before writing, it returns the stashed result's length — matching what the client will actually receive.
+- `StatusCode()`: the currently recorded or already-sent status; 200 if nothing set one. An outermost access log reads the final status after full unwinding.
+- `Size()`: bytes already written; before writing, it returns the stashed result's length. It is 0 for 1xx, 204, 304 and after a zero-length `Write`.
 - `Result()`: the handler's raw return value. Not reading it means no boxing allocation.
-- `IsWritten()`: true once the handler (via an injected writer) or the `Abort` family has written a body; the framework then never writes the stashed result.
+- `IsWritten()`: true once the handler (via an injected writer) or the `Abort` family calls `Write`, including a zero-length write; the framework then never writes the stashed result. Committing headers alone does not count.
 
 ```go
 gbl.Use(func(c *gbl.Context) {
@@ -81,7 +81,7 @@ c.AbortWithStatusString(401, "unauthorized")       // reject with plain text and
 c.AbortWithStatusJSON(403, map[string]string{"error": "forbidden"}) // reject with JSON and abort
 ```
 
-Success responses always carry status 200 — to pair a custom status with a success body, declare an `http.ResponseWriter` parameter in the handler and write it yourself. An `AbortWithStatusJSON` serialization failure is a server-side error: aborted with a generic 500, no details echoed.
+Success responses default to 200; middleware or a handler can record a custom status through the injected `http.ResponseWriter`. Setting only the status may still be followed by automatic return-value writeback; use direct `WriteHeader` + `Write` for full body control. An `AbortWithStatusJSON` serialization failure is a server-side error: aborted with a generic 500, no details echoed. See [ResponseWriter Control](/docs/response-writer).
 
 ## Scenario examples
 

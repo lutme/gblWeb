@@ -22,6 +22,7 @@ gbl.Get("/me", func(c *gbl.Context) string {
 - `Set(key string, value any)`：同 key 覆盖；袋子懒创建、池化回收（`keysPool`），高频 `Set/Get` 零分配。
 - `Get[T](key string) (T, bool)`：类型化读取——key 不存在**或类型不符**都返回 `T` 的零值 + `false`，由调用方决定怎么处理；`nil` Context 安全。
 - 不想指定类型时 `Get[any]` 原样取回存的值。
+- 显式存入 nil 时，`Get[any]` 返回 `(nil, true)`，键仍然存在；`Get[string]` 则类型不符，返回 `("", false)`。
 - 袋子随 Context 池化清空，**不会泄漏到下一个请求**。
 
 ## Value：不需要 ok 时

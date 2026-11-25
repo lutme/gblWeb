@@ -1,6 +1,6 @@
 # Introduction
 
-**GBL** (Grand Blue Lore, 伟大蓝色真理) is a **zero-dependency** Go web framework. A complete HTTP server runs on the Go standard library alone — `go.mod` contains nothing but the module declaration, no third-party packages at all.
+**GBL** (Grand Blue Lore, 伟大蓝色真理) is a **zero-dependency** Go web framework. A complete HTTP server runs on the Go standard library alone; `go.mod` contains only the module declaration and Go version, with no third-party packages.
 
 Its core claim fits in one sentence:
 
@@ -31,7 +31,7 @@ func main() {
 
 At startup GBL reads every handler's function signature and precomputes a binding plan for each parameter by **type + name**:
 
-- `*gbl.Context`, `*http.Request`, `http.ResponseWriter`, upload file types → injected directly by the framework;
+- `*gbl.Context`, `*http.Request`, `http.ResponseWriter`, `gbl.SSEWriter` and upload file types → injected directly by the framework;
 - any other type → bound by parameter name from path parameters, the JSON body, or form/query values;
 - the return value → serialized automatically to plain text or JSON based on its type.
 
@@ -50,32 +50,34 @@ gbl.Post("/user", func(u User) *User {
 
 ### One engine, many entry points
 
-GBL exposes exactly **one** package-level engine. `Get/Post/Use/Group/Run/...` all operate on it, so the rules you register and the server you start are guaranteed to be the same instance — there is no "registered into a second engine" trap. No engine instance is exported; route groups exist only as the `RouteGroup` handle returned by `Group`.
+GBL exposes exactly **one** package-level engine. `Get/Post/Use/Group/Run/...` all operate on it, so the rules you register and the server you start are guaranteed to be the same instance. No engine instance is exported; route groups exist only as the `RouteGroup` handle returned by `Group`.
 
 ### Strict error policy
 
-Unexpected panics **never echo internal details**: the cause goes to the server-side log, the client only receives a generic `500`. Echo rights are split by **who authored the message** — developer-authored text reaches the client verbatim: an explicit `Abort`, a `PanicProcessor` you registered, and the error text returned by `Validate`; framework-assembled internals (reflection detail from binding failures) go only to the log, with a generic `400` on the wire.
+Unexpected panics **never echo internal details**: the cause goes to the server-side log, and the client receives a generic `500`. Echo rights are split by **who authored the message** — developer-authored text reaches the client verbatim: an explicit `Abort`, a `PanicProcessor` you registered, and the error text returned by `Validate`; framework-assembled internals go only to the log. Once a response is committed or the connection is hijacked, the HTTP answer can no longer be rewritten, but unexpected panics are still logged.
 
 ### Fail fast
 
-Route conflicts, invalid path syntax, invalid configuration, unrecoverable parameter names… every registration and configuration error surfaces **at startup**: the reason is logged first, then the process panics. When a deployment dies before serving a single request, the log always contains the reason — not just a bare stack trace.
+Route conflicts, invalid path syntax, invalid configuration, unrecoverable parameter names… every registration and configuration error surfaces **at startup**: the reason is logged first, then the process panics. When a deployment dies before serving a single request, the log always contains the reason.
 
 ## Capability overview
 
 | Area | Capabilities |
 |---|---|
-| Routing | 7 HTTP verbs, `:name` and `{name}` path parameters, static-first matching, automatic HEAD/OPTIONS fallback, route groups |
+| Routing | 7 HTTP verbs, `:name` and `{name}` path parameters, static-map priority, dynamic-tree backtracking, automatic HEAD/OPTIONS fallback, route groups |
 | Binding | Path/query/form/JSON/multipart bound automatically by type + name; scalars, pointers, slices, arrays, nested structs |
 | Middleware | Onion model, `c.Next()` request/response phases, group scope, one-step interception with `Abort` |
 | Context | Pooled `Context`, request-scoped key/value, generic method accessors `Get[T]` / `Value[T]` |
-| Validation | `Validatable` interface, checked after binding and before the handler |
-| Errors | `Abort` / `PanicProcessor` / generic 500 fallback, zero leakage of internal details |
+| Validation | `Validatable` interface, checked after binding and before the handler; missing multi-parameter JSON members use zero values |
+| Streaming | GET SSE, automatic Flush, heartbeats, write deadlines, disconnect cancellation, `OnError` / `OnComplete` |
+| Response control | Raw `http.ResponseWriter`, 1xx/101, `ResponseController`, Hijack and HTTP/2 Push forwarding |
+| Errors | `Abort` / `PanicProcessor` / generic 500 fallback; panics after a committed body are still logged |
 | Logging | Structured `Logger` interface, private colored console, any backend via `SetLogger`, package-level `Info/Warn/Error`, startup banner |
 | Configuration | `Configure` in code, TLS, timeouts; the kernel reads no configuration file |
-| Uploads | Three independent limits (total body / memory threshold / per file), 413 rejection |
+| Uploads | Three independent limits (total body / aggregate file-content memory threshold / per file), 413 rejection |
 | CORS | Struct-based configuration, preflight handling, credentials + wildcard combination rejected at startup |
 | Compression | `Compress` gzip middleware: gated on Accept-Encoding, compressible type and a 1 KB minimum, sets `Vary` automatically |
-| Lifecycle | Signal-driven graceful shutdown, explicit `Shutdown`, log-then-panic on startup failure |
+| Lifecycle | Signal-driven graceful shutdown, explicit `Shutdown`, SSE cancellation, hijacked-connection cleanup, log-then-panic on startup failure |
 
 ## Requirements
 
@@ -87,6 +89,8 @@ Route conflicts, invalid path syntax, invalid configuration, unrecoverable param
 
 - Want to run something right now: [Getting Started](/docs/getting-started)
 - Want to understand the core mechanism: [Handlers & Parameter Binding](/docs/handlers)
+- Want raw response control: [ResponseWriter Control](/docs/response-writer)
+- Want real-time events: [Server-Sent Events](/docs/sse)
 - Looking up a symbol: [API Reference](/docs/api-reference)
 
 ## License

@@ -60,31 +60,31 @@ gbl.Post("/avatar", func(c *gbl.Context, avatar *multipart.FileHeader) string {
 type ByteSize int // a named int: the type name itself documents that the argument is a byte count
 
 func SetMaxBodySize(size ByteSize)       // hard cap on the whole request body (413 when exceeded)
-func SetMaxFileSize(size ByteSize)       // multipart per-part memory threshold; larger parts spill to temp files
+func SetMaxFileSize(size ByteSize)       // aggregate multipart file-content memory threshold; excess spills to temp files
 func SetMaxUploadFileSize(size ByteSize) // hard cap per uploaded file (413 when exceeded)
 ```
 
 | Setting | What it controls | When exceeded | Default |
 |---|---|---|---|
 | `SetMaxBodySize` | **total size of the whole request body** (multipart uploads included) | rejected with 413 | **5 MiB** |
-| `SetMaxFileSize` | the **memory threshold** of multipart parsing — parts up to this size stay in memory, larger ones spill to temp files | nothing; it is *not* a cap and never rejects | **2 MiB** |
+| `SetMaxFileSize` | the **aggregate memory threshold for multipart file content** — content up to this total stays in memory, and excess spills to temp files | nothing; it is *not* a cap and never rejects | **2 MiB** |
 | `SetMaxUploadFileSize` | **the maximum size of each individual uploaded file** (any field, any part) | rejected with 413 before the handler | **1 MiB** |
 
 Understanding the three together:
 
 - `SetMaxBodySize` is the only limit on the **whole** — no matter how many fields the body is split across, an oversized total is rejected;
-- `SetMaxFileSize` is purely a **performance** setting (memory vs disk); it does not limit how much you can upload;
+- `SetMaxFileSize` is purely a **performance** setting (memory vs disk); it does not limit how much you can upload, and file content beyond the combined threshold spills to temp files;
 - `SetMaxUploadFileSize` is the only **per-file** gate: even when the total is still within the body limit, one oversized file is rejected all the same.
 
 The defaults are deliberate: the per-file 1 MiB is **below** the whole-body 5 MiB, so you are protected out of the box — no single file may exceed 1 MiB, while the total can still hold several small files up to 5 MiB. Large uploads are a server risk; this cap blocks them by default, raise it only when you really need to.
 
 ```go
 gbl.SetMaxBodySize(gbl.ByteSize(32 << 20))      // total body cap 32 MiB
-gbl.SetMaxFileSize(gbl.ByteSize(4 << 20))       // parts over 4 MiB spill to temp files
+gbl.SetMaxFileSize(gbl.ByteSize(4 << 20))       // combined file content over 4 MiB spills to temp files
 gbl.SetMaxUploadFileSize(gbl.ByteSize(5 << 20)) // per-file maximum 5 MiB
 ```
 
-All three setters accept only **positive** `ByteSize` values; a non-positive value fails startup (panic). They are independent switches and may be called at any time (applied atomically).
+All three setters accept only **positive** `ByteSize` values; a non-positive value fails startup (panic). They are independent assembling-time switches and must be called **before `Run`**; calling them while serving panics because the engine is read-only.
 
 ## Full example: an album upload with limits
 

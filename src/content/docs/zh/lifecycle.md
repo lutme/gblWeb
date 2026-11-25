@@ -43,9 +43,17 @@
 
 ## 优雅停机
 
+GBL 的停机顺序是：**取消 SSE 流 → 关闭监听器 → 等待在途请求 → 成功后关闭仍被跟踪的 Hijack 连接**。`Run` 会等待正在进行的停机尝试结束，不与它竞争；若该次尝试超时返回错误，`Run` 也会返回，剩余连接不会被子动关闭，需要调用方重试或自行处理。
+
 ### 信号触发（自动）
 
-收到 `SIGINT`（Ctrl+C）或 `SIGTERM` 时：关闭监听 → 给在途请求 **5 秒**收尾窗口 → 退出。容器编排（Kubernetes、docker stop）发的就是 SIGTERM，开箱即用。
+收到 `SIGINT`（Ctrl+C）或 `SIGTERM` 时，使用 **5 秒**收尾窗口。容器编排（Kubernetes、docker stop）发的就是 SIGTERM，开箱即用。
+
+如果窗口耗尽仍未完成：
+
+1. 记录一条 WARN，包含真实错误；
+2. 调用 `http.Server.Close` 强制关闭剩余活动连接；
+3. 关闭仍被跟踪的 Hijack 连接。
 
 ### Shutdown(ctx)（主动）
 
@@ -53,23 +61,26 @@
 func Shutdown(ctx context.Context) error
 ```
 
-优雅停止由 `Run` 启动的服务，等待在途请求直到 `ctx` 到期：
-
 ```go
-// 典型用法：从另一个 goroutine（如管理接口）触发停机
+// 从另一个 goroutine 触发；不要在一个需要等待自身的在途 handler 里同步调用
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 if err := gbl.Shutdown(ctx); err != nil {
-    log.Fatal(err)
+    log.Printf("shutdown did not finish: %v", err)
 }
 ```
 
-- 可重复调用：只有成功才落锁，**失败的停机可以重试**（ctx 到期时服务仍在监听）；
+- 第一次调用就会取消全部 SSE 流，监听 `Done` 的 handler 可以自行清理并退出；
+- `http.Server.Shutdown` 先关闭监听器，再等待在途请求直到 `ctx` 到期；
+- 超时返回错误，但**不会强制关闭**剩余连接；监听器已经关闭，未完成连接仍保留，可以再次调用 `Shutdown` 等待它们收尾；
+- 只有成功才标记停机完成；成功后重复调用是空操作；
+- 成功后关闭仍被跟踪的 Hijack 连接；应用提前关闭的连接会自行移出跟踪表；
 - 可从**不同于 Run** 的 goroutine 调用；
-- 在 `Run` 之前调用返回 `http.ErrServerClosed`；
-- 信号路径收尾窗口耗尽时会记一条 WARN，不静默吞掉。
+- 在 `Run` 之前调用返回 `http.ErrServerClosed`。
 
-> `Run` 已自带信号优雅停机；当你需要**主动**触发（健康检查 kill 开关、测试、嵌入）时才用 `Shutdown`。
+主动停机与信号停机的关键区别是：**主动 `Shutdown` 超时只返回错误并保留剩余连接，信号路径超时则会强制关闭。** `Run` 等待这次调用返回后就会退出，不会继续替你管理保留的连接。如果需要强制策略，应用应在主动停机超时后自行退出进程或管理自己的连接。
+
+> `Run` 已自带信号优雅停机；当你需要**主动**触发（健康检查 kill 开关、测试、嵌入）时才用 `Shutdown`。SSE 与 Hijack 的详细语义见[SSE 实时流](/docs/sse)和[ResponseWriter 进阶](/docs/response-writer)。
 
 ## 启动失败（fail-fast）
 

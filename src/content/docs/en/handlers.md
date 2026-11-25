@@ -42,17 +42,18 @@ Calling it with parentheses — `hs.Lookup(id)` — does not slip through either
 
 ## Injectable parameter types
 
-Every parameter is classified into one of five categories at startup; no type checks happen per request:
+Every parameter is classified into one of six categories at startup; no type checks happen per request:
 
 | Parameter type | What GBL injects |
 |---|---|
 | `*gbl.Context` | the request context (also the middleware argument) |
 | `*http.Request` | the raw request |
 | `http.ResponseWriter` (or any type satisfying the interface) | the framework's wrapped response writer — full control of the response |
+| `gbl.SSEWriter` | the SSE event stream on GET routes |
 | `multipart.FileHeader` / `*multipart.FileHeader` / `[]multipart.FileHeader` / `[]*multipart.FileHeader` | uploaded files matched by field name |
 | any other type | a **business value** bound by name (see below) |
 
-Injected parameters never trigger body parsing — a handler that only declares `*http.Request` never has its request body read at all.
+Injection itself does not trigger body parsing — a handler that only declares `*http.Request` never has its request body read at all. See [ResponseWriter Control](/docs/response-writer) for response ownership and [Server-Sent Events](/docs/sse) for streaming.
 
 ## Business values: sources and priority
 
@@ -110,7 +111,7 @@ gbl.Post("/sum", func(nums []int) int {
 
 ### Rule 2: multiple business parameters ← top-level members keyed by parameter name
 
-With a JSON body and multiple business parameters, the body must be a JSON object, and **every non-path parameter must have a top-level member named after it**:
+With a JSON body and multiple business parameters, the body must be a JSON object. Each non-path parameter reads a top-level member named after it:
 
 ```go
 // POST /user · Body: {"u": {"id": 1, "name": "ada"}, "verbose": true}
@@ -119,7 +120,9 @@ gbl.Post("/user", func(u User, verbose bool) string {
 })
 ```
 
-A missing top-level member is a request-time **400** (generic text; which member is missing stays in the server log), not a silent zero value. A non-object body (e.g. an array) is also a 400.
+A missing top-level member supplies the parameter's **zero value** and does not cause a 400 by itself. If the type implements `Validatable`, validation then decides whether that zero value is acceptable; value parameters remain addressable, so pointer-receiver validation still runs. A missing pointer parameter stays nil, skips validation and reaches the handler.
+
+Present members match parameter names exactly, and duplicate keys keep the last value. A non-object body such as an array or `null` still returns 400. See [Validation](/docs/validation) for the complete contract.
 
 ### Rule 3: path parameters still win
 
@@ -181,7 +184,7 @@ Form/query values and path parameters are strings; GBL converts them to the targ
 | pointers (`*int` etc.) | source missing → `nil`; present → points at the converted value |
 | slices (`[]int` etc.) | consume **repeated values** (`?tag=a&tag=b`); missing → empty slice |
 | `[]byte` | special: raw bytes of the first value, not repeated values |
-| arrays (`[3]int`) | the number of repeated values **must equal the array length exactly**, otherwise 400 |
+| arrays (`[3]int`) | when repeated values are present, their count must equal the array length exactly; a completely missing source uses the zero array |
 | structs | recursive by bind name (see above) |
 
 ```go
@@ -206,16 +209,20 @@ Scalar parameters take the **first value**; use a slice or array to consume repe
 
 ## Automatic return-value serialization
 
-The Content-Type is chosen at **registration time** from the static return type:
+At **registration time**, GBL chooses a provisional Content-Type from the static return type and writes it before middleware and the handler run:
 
-| Return type | Content-Type | Body |
+| Static return type | Provisional Content-Type | Final body while uncommitted |
 |---|---|---|
 | `string` | `text/plain; charset=utf-8` | verbatim |
 | `[]byte` | `text/plain; charset=utf-8` | raw bytes |
 | `bool` / integers / unsigned / floats / complex | `text/plain; charset=utf-8` | formatted text (`42`, `true`, `3.14`) |
-| struct / map / array / non-byte slice / pointer / interface | `application/json; charset=utf-8` | JSON |
-| nil pointer / nil interface | `application/json; charset=utf-8` | **empty body** |
-| no return value | — | empty body, 200 |
+| struct / map / array / non-byte slice / pointer to a composite / interface | `application/json; charset=utf-8` | usually JSON; interfaces and pointers follow the runtime value |
+| pointer to a scalar | `text/plain; charset=utf-8` | formatted text |
+| `error` | JSON while its static type is an interface | error message as `text/plain; charset=utf-8` |
+| nil pointer / nil interface | follows the static type | **empty body**, refined to plain text at runtime |
+| no return value | `text/plain; charset=utf-8` | empty body, 200 |
+
+Runtime serialization may refine the final type while headers remain uncommitted; after `Flush` or the first `Write`, it can no longer change. This gives middleware a usable media type even when it flushes early. See [ResponseWriter Control](/docs/response-writer).
 
 ```go
 gbl.Get("/text", func() string { return "plain" })
@@ -243,7 +250,7 @@ gbl.Post("/echo", func(r *http.Request) string {
 })
 ```
 
-Once a body has been written (by handler or middleware), the framework no longer writes the stashed result — what you wrote stands.
+Once a handler or middleware calls `Write`, including a zero-length write, the framework no longer writes the stashed result. `Hijack` also stops automatic writeback completely; `WriteHeader` alone may still be followed by automatic return-value rendering while preserving the status. Statuses `204`, `304` and `101` suppress automatic body writeback. See [ResponseWriter Control](/docs/response-writer).
 
 ## Where parameter names come from
 
@@ -257,7 +264,8 @@ Unnamed parameters (`func(string) string`) receive placeholder names `arg0`, `ar
 
 | Failure | Status | What the client sees |
 |---|---|---|
-| missing parameter (multi-parameter JSON) / conversion failure | 400 | generic `Bad Request` (reflection detail — parameter names, Go types — goes only to the log) |
+| non-object multi-parameter JSON / conversion failure | 400 | generic `Bad Request` (reflection detail — parameter names, Go types — goes only to the log) |
+| missing multi-parameter JSON member | — | zero value, then validation and the handler; absence alone is not a 400 |
 | body over the total limit | 413 | `Request Entity Too Large` |
 | validation failure (`Validatable`) | 400 | the `Validate` error text verbatim (you wrote the message, so you own what it discloses) |
 | return-value serialization failure | 500 | fixed text (server-side problem, nothing leaked) |
@@ -285,4 +293,4 @@ gbl.Post("/orders", func(o Order) Order {
 })
 ```
 
-Next: [Routing](/docs/routing) — path syntax, match priority and automatic fallbacks.
+Next: [ResponseWriter Control](/docs/response-writer) — status codes, Flush, Hijack and underlying capabilities.

@@ -91,6 +91,17 @@ func (l appLogger) Banner(block string) {
 
 The banner carries the logo and a status table (version / listening / tls / routes), followed by one ordinary Info line: `started successfully, ready to accept requests`. The version is read from the build info embedded in the binary: compiled into your application as a dependency, it shows the tagged gbl version your `go.mod` requires; a local or replaced build shows `(devel)`.
 
+## SSE and panic logging
+
+These events use the same `Logger` too:
+
+- SSE header startup failure: `SSE startup failed` with the real `error`;
+- the first write or flush failure after SSE startup: `SSE stream failed`, logged once even without `OnError`;
+- an SSE lifecycle callback panic: `SSE error callback panic` or `SSE complete callback panic`, with the recovered value and stack;
+- any unexpected request panic: `recovered panic`. It is still logged after a body write, a header-only Flush or Hijack, but the HTTP response is no longer rewritten.
+
+See [Server-Sent Events](/docs/sse) and [Errors & Panics](/docs/errors) for callback and client-feedback rules.
+
 ## API monitoring is yours
 
 The framework **deliberately** ships no access-log middleware. Monitoring API traffic is an application concern, and everything a one-line middleware needs is already on the chain — install your own:

@@ -46,9 +46,17 @@ The configuration is finalized by `Configure` before `Run` (see [Configuration](
 
 ## Graceful shutdown
 
+GBL shuts down in this order: **cancel SSE streams → close the listener → drain in-flight requests → close still-tracked hijacked connections after success**. `Run` waits for an in-progress shutdown attempt to finish rather than racing it; if that attempt times out and returns an error, `Run` also returns, but remaining connections stay open for the caller to retry or manage.
+
 ### Signal-triggered (automatic)
 
-On `SIGINT` (Ctrl+C) or `SIGTERM`: close the listener → give in-flight requests a **5-second** window to finish → exit. Container orchestrators (Kubernetes, docker stop) send exactly SIGTERM — it works out of the box.
+`SIGINT` (Ctrl+C) and `SIGTERM` use a **5-second** drain window. Container orchestrators (Kubernetes, docker stop) send SIGTERM, so this works out of the box.
+
+If the window expires:
+
+1. a WARN records the real error;
+2. `http.Server.Close` forcibly closes remaining active connections;
+3. still-tracked hijacked connections are closed.
 
 ### Shutdown(ctx) (explicit)
 
@@ -56,23 +64,27 @@ On `SIGINT` (Ctrl+C) or `SIGTERM`: close the listener → give in-flight request
 func Shutdown(ctx context.Context) error
 ```
 
-Gracefully stops the server started by `Run`, waiting for in-flight requests until `ctx` expires:
-
 ```go
-// Typical usage: trigger shutdown from another goroutine (e.g. an admin endpoint)
+// Trigger from another goroutine; do not call synchronously inside an
+// in-flight handler that the shutdown would then wait for.
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 if err := gbl.Shutdown(ctx); err != nil {
-    log.Fatal(err)
+    log.Printf("shutdown did not finish: %v", err)
 }
 ```
 
-- Repeatable: success alone latches, so a **failed shutdown can be retried** (the server is still listening when ctx expires);
+- the first call cancels every SSE stream, allowing handlers that observe `Done` to clean up and exit;
+- `http.Server.Shutdown` closes the listener first, then waits for in-flight requests until `ctx` expires;
+- on timeout it returns an error but **does not forcibly close** remaining connections; the listener is already closed, unfinished connections stay alive, and another `Shutdown` call can wait for them;
+- only success latches completion; later calls after success are no-ops;
+- success closes still-tracked hijacked connections; connections the application closes itself leave the tracking table;
 - callable from a goroutine **other than Run's**;
-- called before `Run`, it returns `http.ErrServerClosed`;
-- a signal-path drain that exhausts its window is logged as a WARN, never swallowed.
+- called before `Run`, it returns `http.ErrServerClosed`.
 
-> `Run` already handles signal-driven graceful shutdown; use `Shutdown` only when you need to trigger it *explicitly* (health-check kill switches, tests, embedding).
+The key difference is that **explicit `Shutdown` timeout returns an error and preserves remaining connections, while the signal path force-closes after its timeout**. `Run` exits after that call returns and does not keep managing the preserved connections. If you need a forced policy, exit the process or manage your own connections after an explicit timeout.
+
+> `Run` already handles signal-driven graceful shutdown; use `Shutdown` only when you need to trigger it *explicitly* (health-check kill switches, tests, embedding). See [Server-Sent Events](/docs/sse) and [ResponseWriter Control](/docs/response-writer) for stream and hijack details.
 
 ## Startup failure (fail-fast)
 

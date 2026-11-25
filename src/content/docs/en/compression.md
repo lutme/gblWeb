@@ -6,11 +6,13 @@
 
 All three must hold, otherwise the response passes through untouched:
 
-1. the client sent `Accept-Encoding: gzip`;
+1. the client accepts `gzip` or its compatible spelling `x-gzip` through `Accept-Encoding`;
 2. the response `Content-Type` is compressible — every `text/*` type plus JSON, XML, CSS, JS, SVG, RSS/Atom; binary types (images, video, audio, PDF) are never compressed (already compressed, or gzip gains nothing);
 3. the body is at least **1 KB** — smaller bodies gain little and the CPU cost is not worth it.
 
-On a hit: the staged body is replaced with the compressed data, and `Content-Encoding: gzip` plus `Vary: Accept-Encoding` are set (shared-cache friendly). The compression output buffer comes from `responseBufferPool` — compressing a response makes no fresh allocation.
+An explicit `gzip` entry takes precedence over the wildcard: `gzip;q=0, *;q=1` refuses gzip and cannot be re-enabled by the wildcard, while `*;q=0, gzip;q=1` still allows it. A quality value of zero or less is a refusal.
+
+On a hit, the staged body is replaced and `Content-Encoding: gzip` is set. **Every response passing through a valid `Compress` middleware gains `Vary: Accept-Encoding`**, compressed or not, so caches can select the right representation. Output buffers and gzip writers are pooled to reduce repeated allocations, but the whole compression path is not guaranteed allocation-free.
 
 ## Compression levels
 
@@ -62,6 +64,7 @@ gbl.Use(
 ## What never gets compressed
 
 - **already-written responses**: a handler writing through an injected `http.ResponseWriter`, or a rejection written by the `Abort` family — the body is on the wire, the middleware does not touch it;
+- **flushed responses**: once headers commit, including SSE streams, the middleware cannot replace the response with a buffered gzip body;
 - **responses that already carry `Content-Encoding`**: with Compress stacked at several layers (global plus group), only the layer that sees the result first actually compresses; outer layers see the encoding header set and pass through — never a double deflate;
 - **requests with no staged result**: the handler returns nothing, or the chain was stopped by `c.Abort()` before the handler;
 - anything failing the three conditions: no gzip in `Accept-Encoding`, binary content type, body under 1 KB.

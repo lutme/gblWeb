@@ -145,8 +145,8 @@ export default {
     title: '深入每一处细节',
     sub: '完整的中英双语文档：从参数装配的每条规则，到部署时的 -trimpath 陷阱，全部基于源码整理，处处有示例。',
     cards: {
-      guide: { title: '入门与核心', desc: '快速上手 · 参数装配 · 路由 · 分组 · 中间件 · Context' },
-      robust: { title: '健壮性', desc: '错误策略 · 校验 · 上传限额 · CORS 安全策略' },
+      guide: { title: '入门与核心', desc: '快速上手 · 参数装配 · ResponseWriter · 路由 · 分组 · 中间件 · Context' },
+      robust: { title: '健壮性', desc: '错误策略 · 校验 · SSE 实时流 · 上传限额 · CORS 安全策略' },
       ops: { title: '运维与部署', desc: '日志 · 配置 · 生命周期 · 部署陷阱 · 性能 · API 总览' },
     },
     enter: '进入文档',

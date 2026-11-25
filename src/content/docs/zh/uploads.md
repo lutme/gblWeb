@@ -60,31 +60,31 @@ gbl.Post("/avatar", func(c *gbl.Context, avatar *multipart.FileHeader) string {
 type ByteSize int // 具名 int：类型名本身在调用点说明参数是字节数
 
 func SetMaxBodySize(size ByteSize)       // 整个请求 body 的硬上限（超限 413）
-func SetMaxFileSize(size ByteSize)       // multipart 单 part 内存阈值；更大的落临时文件
+func SetMaxFileSize(size ByteSize)       // multipart 文件内容的总内存阈值；超出部分落临时文件
 func SetMaxUploadFileSize(size ByteSize) // 每个上传文件的硬上限（超限 413）
 ```
 
 | 设置 | 控制什么 | 超限后果 | 默认值 |
 |---|---|---|---|
 | `SetMaxBodySize` | **整个请求 body 的总大小**（含 multipart 上传） | 413 拒绝 | **5 MiB** |
-| `SetMaxFileSize` | multipart 解析的**内存阈值**——不超过此大小的 part 留在内存，更大的落临时文件 | 无；它**不是**上限，从不拒绝请求 | **2 MiB** |
+| `SetMaxFileSize` | multipart **文件内容的总内存阈值**——总量不超过此值时留在内存，超出部分落临时文件 | 无；它**不是**上限，从不拒绝请求 | **2 MiB** |
 | `SetMaxUploadFileSize` | **每一个单独上传文件的最大大小**（任意字段、任意 part） | 进入 handler 前 413 拒绝 | **1 MiB** |
 
 三个一起理解：
 
 - `SetMaxBodySize` 是唯一针对**整体**的限制——不管 body 拆在多少字段上，总量过大就被拒；
-- `SetMaxFileSize` 纯是**性能**设置（内存 vs 磁盘），不限制你能上传多少；
+- `SetMaxFileSize` 纯是**性能**设置（内存 vs 磁盘），不限制你能上传多少；多个小文件合计超过阈值时，超出的文件内容也会落临时文件；
 - `SetMaxUploadFileSize` 是唯一的**单文件**闸门：即使总量仍在 body 限额内，某一个文件过大也照样拒绝。
 
 默认值的设计意图：单文件 1 MiB **低于** 整 body 5 MiB，所以开箱即用就有保护——任何单个文件不得超过 1 MiB，但整体仍可容纳多个小文件共 5 MiB。大文件上传对服务器有风险，这道上限默认强制拦截，确有需要时才调高。
 
 ```go
 gbl.SetMaxBodySize(gbl.ByteSize(32 << 20))      // 总 body 上限 32 MiB
-gbl.SetMaxFileSize(gbl.ByteSize(4 << 20))       // 超过 4 MiB 的 part 落临时文件
+gbl.SetMaxFileSize(gbl.ByteSize(4 << 20))       // 文件内容合计超过 4 MiB 的部分落临时文件
 gbl.SetMaxUploadFileSize(gbl.ByteSize(5 << 20)) // 单文件最大 5 MiB
 ```
 
-三个设置都只接受**正的** `ByteSize`，传非正值即启动失败（panic）。它们是互相独立的开关，可以在任何时候调用（原子生效）。
+三个设置都只接受**正的** `ByteSize`，传非正值即启动失败（panic）。它们是互相独立的装配期开关，必须在 `Run` 之前调用；服务启动后再调用会因引擎只读而 panic。
 
 ## 完整示例：带限额的相册上传
 

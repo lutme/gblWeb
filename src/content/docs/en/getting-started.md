@@ -116,7 +116,7 @@ curl -X POST http://localhost:9801/user \
 # {"ID":1,"Name":"ADA"}
 ```
 
-Look at the third request: you wrote no decoding code at all. `User` is bound from the body automatically, the returned `*User` becomes JSON automatically, and the `Content-Type` was chosen at registration time from the return type.
+Look at the third request: you wrote no decoding code at all. `User` is bound from the body automatically, and the returned `*User` becomes JSON automatically. The provisional `Content-Type` is chosen at registration and written before middleware and the handler run; runtime serialization may still refine it before headers commit.
 
 ## Optional configuration: Configure
 
@@ -151,7 +151,7 @@ net/http accepts the connection and parses the request
 (If CORS is configured) corsHandler checks the Origin
   │
   ▼
-Method resolution + routing-tree match, path parameters filled: {id: "42"}
+Method resolution + static-map-first match (dynamic tree only after a miss), path parameters filled: {id: "42"}
   │
   ▼
 A Context is taken from the pool, loaded with the request,
@@ -170,7 +170,7 @@ routeEndpoint calls invokeHandler:
 The chain unwinds (code after c.Next() in middleware runs)
   │
   ▼
-The stashed result is written back (Content-Type chosen at registration)
+The normal return-value path writes back the stashed result (except after direct Write / Hijack / no-body statuses)
   │
   ▼
 Multipart temp files cleaned up; Context and friends reset and returned to their pools
@@ -179,13 +179,13 @@ Multipart temp files cleaned up; Context and friends reset and returned to their
 Two things worth remembering:
 
 1. **The middleware chain is frozen at startup.** Only `Run()` assembles global middleware, group middleware and the terminal `routeEndpoint` into a fixed slice per route; requests reuse it directly, nothing is reassembled per request.
-2. **The response is written back only after the chain fully unwinds.** That is why middleware code after `c.Next()` can read the final status code, response size and handler return value — timing and access logs belong in this phase.
+2. **Normal return-value responses are written automatically only after the chain unwinds.** Middleware after `c.Next()` can therefore read the current status, size and handler return value; direct Write, Flush, SSE and Hijack change commit timing.
 
 Details in [Middleware](/docs/middleware) and [Context](/docs/context).
 
 ## Graceful shutdown
 
-`gbl.Run()` handles signals out of the box: on `SIGINT` (Ctrl+C) or `SIGTERM` it closes the listener, gives in-flight requests a 5-second window to finish, then exits. To stop the server from code (health-check switches, tests, embedding), use `gbl.Shutdown(ctx)` — see [Lifecycle](/docs/lifecycle).
+`gbl.Run()` handles signals out of the box: on `SIGINT` (Ctrl+C) or `SIGTERM` it cancels SSE, closes the listener and gives in-flight requests a 5-second window; successful shutdown also closes tracked hijacked connections. To stop the server from code, use `gbl.Shutdown(ctx)` — see [Lifecycle](/docs/lifecycle).
 
 ## Next steps
 

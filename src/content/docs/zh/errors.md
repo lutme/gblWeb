@@ -10,10 +10,10 @@ GBL 的错误策略按**消息是谁写的**划分回显权：**开发者写的�
 | `c.AbortWithStatusJSON(status, body)` | 你给的 status + JSON body |
 | 校验失败（`Validatable`） | 400 + `Validate` 错误文本原样回显（消息是你写的，披露责任在你） |
 | 请求解析失败（坏 Content-Type、body 超限） | 400 / 413 + 原因（客户端自己的请求帧问题） |
-| 装配失败（缺 JSON 成员、类型转换错误） | 通用 400（参数名、Go 类型等反射细节只进日志） |
+| 装配失败（多参数 JSON 非对象、类型转换错误） | 通用 400（参数名、Go 类型等反射细节只进日志）；缺成员使用零值，不单独报错 |
 | 返回值序列化失败 | 500 + 固定文本 `response serialization failed` |
 | 其他任何 panic | 通用 500 `Internal Server Error`（堆栈进日志） |
-| 注册了 `PanicProcessor` | **以上所有被恢复的值都归它渲染** |
+| 注册了 `PanicProcessor` | **响应未提交且未 Hijack 时，所有被恢复的值都归它渲染** |
 
 ## Abort 系列：显式中止
 
@@ -42,7 +42,7 @@ type PanicProcessor func(err any) (any, HttpStatus)
 type HttpStatus int
 ```
 
-`RegisterPanicProcessor(p)` 在引擎上安装你的 panic 渲染器。**一旦注册，它就接管所有被恢复值的渲染**——显式中止和真实崩溃都归它。因此你要为"不泄露内部错误"负全责。返回的 `HttpStatus` 会被校验：超出 100–999 的状态码一律钳制为 500——渲染钩子是你写的代码，框架不信任它，绝不让恢复路径自己再 panic 第二次：
+`RegisterPanicProcessor(p)` 在引擎上安装你的 panic 渲染器。**只要响应尚未提交且连接未 Hijack，一旦注册就接管所有被恢复值的渲染**——显式中止和真实崩溃都归它。因此你要为"不泄露内部错误"负全责。body 已写出、仅 Flush 或 Hijack 后的恢复不进入渲染器，只记录非预期 panic。返回的 `HttpStatus` 会被校验：超出 100–999 的状态码一律钳制为 500——渲染钩子是你写的代码，框架不信任它，绝不让恢复路径自己再 panic 第二次：
 
 ```go
 gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {
@@ -62,19 +62,20 @@ gbl.RegisterPanicProcessor(func(err any) (any, gbl.HttpStatus) {
 | 结构体 / map | JSON | application/json |
 | 数组 / 切片 | JSON | application/json |
 | `string` | 原样 | text/plain |
-| 指针 / 接口 | 解一层后按上述规则 | 随解包结果 |
+| 指针 / 接口 | 递归解包后按上述规则；nil 为空 body | 随最终值 |
 | 标量 | 格式化文本 | text/plain |
+| nil | 空 body | text/plain |
 
 > 注意：`error` 走纯文本而不是 JSON——`errors.New` / `fmt.Errorf` 的字段全是未导出的，反射序列化只会得到空 `{}`，所以框架直接取消息文本。
 
 ## 已提交的 body 不可改写
 
-如果 panic 发生时 body 已经写出（handler 注入了 `http.ResponseWriter` 并写过，或 `Abort` 系列已写了拒绝响应），响应无法重写——框架只把已记录的状态码（或默认 200）落线。这是 HTTP 的固有限制，不是 GBL 的特殊行为。
+如果 panic 发生时 body 已经写出（handler 注入了 `http.ResponseWriter` 并写过，或 `Abort` 系列已写了拒绝响应），响应无法重写——框架只把已记录的状态码（或默认 200）落线。非预期 panic 仍会记录 `error` 和完整 `stack`，包括 SSE 已发送事件后的 panic；不会尝试追加第二个 HTTP 响应。Hijack 后或仅 Flush 尚未写 body 时，也只记录非预期 panic，不再调用 `PanicProcessor`。这是 HTTP 的固有限制，不是 GBL 的特殊行为。
 
 ## 内部如何处理
 
 - 每个请求的 panic 都被 `recover` 捕获，按上表渲染；
-- 非预期 panic 以结构化字段记录：`error`（恢复值）+ `stack`（完整 goroutine 堆栈），经引擎 `Logger` 写出，任何后端都可检索；
+- 未注册 `PanicProcessor` 时，非预期 panic 以结构化字段记录：`error`（恢复值）+ `stack`（完整 goroutine 堆栈）；响应已提交或 Hijack 后即使注册了渲染器也仍记录；
 - 框架自己的 404/405/413/501 与请求解析失败也走同一条 panic 管线（内部 `responseAbort` 值），所以注册了 `PanicProcessor` 后这些回答同样由你的渲染器产出——设计信封时要把它们考虑进去。
 
 ## 完整示例：统一错误信封
